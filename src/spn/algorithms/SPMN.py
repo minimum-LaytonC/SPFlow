@@ -10,7 +10,7 @@ from spn.algorithms.splitting.RDC import get_split_cols_RDC_py
 from spn.algorithms.splitting.Clustering import get_split_rows_KMeans
 from spn.algorithms.LearningWrappers import learn_mspn, learn_parametric, learn_mspn_for_spmn
 from spn.algorithms.SPMNHelper import *
-
+from sklearn.feature_selection import chi2
 
 def learn_spmn_structure(train_data, index, params):
 
@@ -52,11 +52,23 @@ def learn_spmn_structure(train_data, index, params):
 
         ds_context_prod = get_ds_context_prod(curr_train_data_prod, scope_prod, index, scope_index, params)
 
+        #attempt to partition into independent subsets:
         data_slices_prod = split_cols(curr_train_data_prod, ds_context_prod, scope_prod)
         curr_op = get_next_operation()
 
+        #TODO add chi2 to test if the only correlations are deeper in the partial order
+        significant_chi2 = False
+        print("\n\ntrain_data.shape:\t\t" + str(train_data.shape))
+        print("range(scope_index,scope_index+len(curr_var_set)):\t\t"+str(range(scope_index,scope_index+len(curr_var_set))))
+        print("\n")
+        if train_data.shape[1] > 1:
+            for i in range(0,len(curr_var_set)):
+                min_chi2_pvalue = np.min(chi2(np.abs(np.delete(train_data,i,axis=1)),train_data[:,i])[1])
+                if min_chi2_pvalue < params.chi2_thresh:
+                    significant_chi2 = True
+                    break
 
-        if len(data_slices_prod)>1 or curr_op == "Prod" or index == len(params.partial_order) :
+        if not significant_chi2 or len(data_slices_prod)>1 or curr_op == "Prod" or index == len(params.partial_order) :
             set_next_operation("Sum")
 
             if params.util_to_bin :
@@ -131,10 +143,11 @@ def learn_spmn(train_data , partial_order , decision_nodes, utility_node, featur
 
 class SPMN_Params():
 
-    def __init__(self, partial_order, decision_nodes, utility_node, feature_names, util_to_bin ):
+    def __init__(self, partial_order, decision_nodes, utility_node, feature_names, util_to_bin, chi2_thresh=0.05 ):
 
         self.partial_order = partial_order
         self.decision_nodes = decision_nodes
         self.utility_node = utility_node
         self.feature_names = feature_names
         self.util_to_bin = util_to_bin
+        self.chi2_thresh = chi2_thresh
