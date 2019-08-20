@@ -6,11 +6,13 @@ Created on March 28, 2019
 
 from spn.structure.Base import Sum, Product, Max
 from spn.structure.Base import assign_ids, rebuild_scopes_bottom_up
-from spn.algorithms.splitting.RDC import get_split_cols_RDC_py
+from spn.algorithms.TransformStructure import Prune
 from spn.algorithms.splitting.Clustering import get_split_rows_KMeans
+from spn.algorithms.splitting.Base import split_data_by_clusters
 from spn.algorithms.LearningWrappers import learn_mspn, learn_parametric, learn_mspn_for_spmn
 from spn.algorithms.SPMNHelper import *
 from sklearn.feature_selection import chi2
+from sklearn.cluster import KMeans
 
 def learn_spmn_structure(train_data, index, params):
 
@@ -47,28 +49,21 @@ def learn_spmn_structure(train_data, index, params):
 
         curr_train_data_prod, curr_train_data = get_curr_train_data_prod(train_data, curr_var_set)
 
-        split_cols = get_split_cols_RDC_py()
         scope_prod = get_scope_prod(curr_train_data_prod, scope_index, params.feature_names)
 
         ds_context_prod = get_ds_context_prod(curr_train_data_prod, scope_prod, index, scope_index, params)
 
         #attempt to partition into independent subsets:
-        data_slices_prod = split_cols(curr_train_data_prod, ds_context_prod, scope_prod)
         curr_op = get_next_operation()
 
-        #TODO add chi2 to test if the only correlations are deeper in the partial order
         significant_chi2 = False
-        print("\n\ntrain_data.shape:\t\t" + str(train_data.shape))
-        print("range(scope_index,scope_index+len(curr_var_set)):\t\t"+str(range(scope_index,scope_index+len(curr_var_set))))
-        print("\n")
         if train_data.shape[1] > 1:
             for i in range(0,len(curr_var_set)):
                 min_chi2_pvalue = np.min(chi2(np.abs(np.delete(train_data,i,axis=1)),train_data[:,i])[1])
                 if min_chi2_pvalue < params.chi2_thresh:
                     significant_chi2 = True
                     break
-
-        if not significant_chi2 or len(data_slices_prod)>1 or curr_op == "Prod" or index == len(params.partial_order) :
+        if not significant_chi2 or index == len(params.partial_order) :
             set_next_operation("Sum")
 
             if params.util_to_bin :
@@ -97,11 +92,13 @@ def learn_spmn_structure(train_data, index, params):
 
         else:
 
-            split_rows = get_split_rows_KMeans()
             scope_sum = list(range(train_data.shape[1]))
 
             ds_context_sum = get_ds_context_sum(train_data, scope_sum, index, scope_index, params)
-            data_slices_sum = split_rows(train_data, ds_context_sum, scope_sum)
+
+            cluster_data = train_data[:,:len(curr_var_set)]
+            clusters = KMeans(n_clusters=2, random_state=17).fit_predict(cluster_data)
+            data_slices_sum = split_data_by_clusters(train_data, clusters, scope_sum, rows=True)
 
             spn0 = []
             weights = []
@@ -111,7 +108,6 @@ def learn_spmn_structure(train_data, index, params):
 
                 for cl, scop, weight in data_slices_sum:
 
-                    set_next_operation("Prod")
                     spn0.append(learn_spmn_structure(cl, index, params))
                     weights.append(weight)
 
@@ -123,7 +119,7 @@ def learn_spmn_structure(train_data, index, params):
         rebuild_scopes_bottom_up(spn)
         return spn
 
-def learn_spmn(train_data , partial_order , decision_nodes, utility_node, feature_names,
+def learn_spmn(train_data, partial_order, decision_nodes, utility_node, feature_names,
                util_to_bin = False ):
 
     """
@@ -137,6 +133,7 @@ def learn_spmn(train_data , partial_order , decision_nodes, utility_node, featur
     params = SPMN_Params(partial_order, decision_nodes, utility_node, feature_names, util_to_bin )
 
     spmn = learn_spmn_structure(train_data, index, params)
+    spmn = Prune(spmn)
 
     return spmn
 
