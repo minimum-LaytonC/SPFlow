@@ -40,6 +40,9 @@ def mpe_sum(node, parent_result, data=None, lls_per_node=None, rand_gen=None):
     for i, c in enumerate(node.children):
         w_children_log_probs[:, i] = lls_per_node[parent_result, c.id] + np.log(node.weights[i])
 
+    # normalize
+    w_children_log_probs = w_children_log_probs - np.log(np.sum(np.exp(w_children_log_probs),axis=1)).reshape(-1,1)
+
     max_child_branches = np.argmax(w_children_log_probs, axis=1)
 
     children_row_ids = {}
