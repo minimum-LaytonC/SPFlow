@@ -3,7 +3,7 @@ import numpy as np
 
 from spn.algorithms.Inference import EPSILON, add_node_likelihood
 
-from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility
+from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility, State
 from spn.structure.leaves.histogram.Inference import histogram_likelihood
 
 def utility_value(node, data=None, dtype=np.float64):
@@ -21,3 +21,6 @@ def utility_value(node, data=None, dtype=np.float64):
 
 def add_utility_inference_support():
     add_node_likelihood(Utility, histogram_likelihood)
+
+def add_state_inference_support():
+    add_node_likelihood(State, histogram_likelihood)

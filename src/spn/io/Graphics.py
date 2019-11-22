@@ -1,4 +1,4 @@
-"""
+ri"""
 Created on March 29, 2018
 
 @author: Alejandro Molina
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def get_networkx_obj(spn, feature_labels=None):
     import networkx as nx
     from spn.structure.Base import Sum, Product, Leaf, get_nodes_by_type, Max
-    from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility
+    from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility, State
     import numpy as np
 
     all_nodes = get_nodes_by_type(spn)
@@ -26,7 +26,7 @@ def get_networkx_obj(spn, feature_labels=None):
 
     labels = {}
     for n in all_nodes:
-
+        color = "#DDDDDD"
         if isinstance(n, Sum):
             label = "+"
             shape = 'o'
@@ -39,6 +39,10 @@ def get_networkx_obj(spn, feature_labels=None):
         elif isinstance(n, Utility):
             shape = 'd'
             label = "U" + str(n.scope[0])
+        elif isinstance(n, State):
+            shape = 'o'
+            color = "b"
+            label = "S1" if n.scope[0]==0 else "S2"
         else:
             if feature_labels is not None:
                 label = feature_labels[n.scope[0]]
@@ -49,7 +53,7 @@ def get_networkx_obj(spn, feature_labels=None):
 
 
 
-        g.add_node(n.id, s=shape)
+        g.add_node(n.id, s=shape, c=color)
         labels[n.id] = label
 
         if isinstance(n, Leaf):
@@ -84,15 +88,15 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None):
 
     # ax.invert_yaxis()
 
-    node_shapes = set((node_shape[1]["s"] for node_shape in g.nodes(data=True)))
+    node_shapes = set(((node_shape[1]["s"],node_shape[1]["c"]) for node_shape in g.nodes(data=True)))
 
-    for node_shape in node_shapes:
+    for node_shape, node_color in node_shapes:
         nx.draw(
             g,
             pos,
             with_labels=True,
             arrows=False,
-            node_color="#DDDDDD",
+            node_color=node_color,
             edge_color="#888888",
             width=1,
             node_size=180,
@@ -100,7 +104,7 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None):
             font_size=4,
             node_shape=node_shape,
             nodelist=[
-                sNode[0] for sNode in filter(lambda x: x[1]["s"] == node_shape, g.nodes(data=True))
+                sNode[0] for sNode in filter(lambda x: x[1]["s"] == node_shape and x[1]["c"] == node_color, g.nodes(data=True))
             ]
         )
 

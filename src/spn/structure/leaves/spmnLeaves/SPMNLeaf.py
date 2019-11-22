@@ -19,6 +19,9 @@ def create_spmn_leaf(data, ds_context, scope):
     if meta_type == MetaType.UTILITY:
         hist = create_histogram_leaf(data, ds_context, scope)
         return Utility(hist.breaks, hist.densities, hist.bin_repr_points, scope=idx)
+    elif meta_type == MetaType.STATE:
+        hist = create_histogram_leaf(data, ds_context, scope)
+        return State(hist.breaks, hist.densities, hist.bin_repr_points, scope=idx)
     else:
         return create_histogram_leaf(data, ds_context, scope)
 
@@ -30,4 +33,13 @@ class Utility(Histogram):
         # has same member variables as histogram
         Histogram.__init__(self, breaks, densities, bin_repr_points, scope,
                            type_=None, meta_type=MetaType.UTILITY)
+        self.test = 'test'
 
+class State(Histogram):
+
+    def __init__(self, breaks, densities, bin_repr_points, scope=None, type_=None, meta_type=MetaType.UTILITY):
+
+        # has same member variables as histogram
+        Histogram.__init__(self, breaks, densities, bin_repr_points, scope,
+                           type_=None, meta_type=MetaType.UTILITY)
+        self.interface_links = []

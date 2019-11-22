@@ -1,9 +1,9 @@
-from spn.structure.leaves.histogram.MPE import histogram_mode
+from spn.structure.leaves.histogram.MPE import histogram_mode, histogram_bottom_up_ll, histogram_top_down
 from spn.algorithms.MPE import get_mpe_top_down_leaf
 
 from spn.algorithms.MPE import add_node_mpe
 
-from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility
+from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility, State
 import numpy as np
 
 from spn.structure.leaves.spmnLeaves.Inference import utility_value
@@ -26,3 +26,6 @@ def utility_top_down(node, input_vals, lls_per_node, data=None):
 
 def add_utility_mpe_support():
     add_node_mpe(Utility, utility_bottom_up_uVal, utility_top_down)
+
+def add_state_mpe_support():
+    add_node_mpe(State, histogram_bottom_up_ll, histogram_top_down)

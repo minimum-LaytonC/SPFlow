@@ -14,6 +14,7 @@ class MetaType(Enum):
     BINARY = 2
     DISCRETE = 3
     UTILITY = 4
+    STATE = 5
 
 
 class Type(Enum):
@@ -25,6 +26,7 @@ class Type(Enum):
     COUNT = (6, MetaType.DISCRETE)
     BINARY = (7, MetaType.BINARY)
     UTILITY = (8, MetaType.UTILITY)
+    STATE = (9, MetaType.STATE)
 
     def __init__(self, enum_val, meta_type):
         self._enum_val = enum_val
@@ -39,5 +41,6 @@ META_TYPE_MAP = {
     MetaType.REAL: [Type.REAL, Type.INTERVAL, Type.POSITIVE],
     MetaType.BINARY: [Type.BINARY],
     MetaType.DISCRETE: [Type.CATEGORICAL, Type.ORDINAL, Type.COUNT],
-    MetaType.UTILITY: [Type.UTILITY]
+    MetaType.UTILITY: [Type.UTILITY],
+    MetaType.STATE: [Type.STATE]
 }

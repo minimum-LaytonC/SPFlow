@@ -181,7 +181,7 @@ class Context:
             domain_values = [min_val, max_val]
 
             if feature_meta_type == MetaType.REAL or feature_meta_type == MetaType.BINARY or \
-                    feature_meta_type == MetaType.UTILITY:
+                    feature_meta_type == MetaType.UTILITY or feature_meta_type == MetaType.STATE:
 
                 domain.append(domain_values)
             elif feature_meta_type == MetaType.DISCRETE:
