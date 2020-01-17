@@ -56,17 +56,22 @@ def get_networkx_obj(spn, feature_labels=None):
         g.add_node(n.id, s=shape, c=color)
         labels[n.id] = label
 
-        if isinstance(n, Leaf):
+
+        if isinstance(n, State):
+            for i, c in enumerate(n.interface_links):
+                g.add_edge(c.id, n.id, weight=i, style='dashed')
+            continue
+        elif isinstance(n, Leaf):
             continue
         for i, c in enumerate(n.children):
             edge_label = ""
             if isinstance(n, Sum):
                 edge_label = np.round(n.weights[i], 2)
-            g.add_edge(c.id, n.id, weight=edge_label)
+            g.add_edge(c.id, n.id, weight=edge_label, style='solid')
 
             if isinstance(n, Max):
                 edge_label = np.round(n.dec_values[i], 2)
-            g.add_edge(c.id, n.id, weight=edge_label)
+            g.add_edge(c.id, n.id, weight=edge_label, style='solid')
 
     return g, labels
 
@@ -105,14 +110,29 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None):
             node_shape=node_shape,
             nodelist=[
                 sNode[0] for sNode in filter(lambda x: x[1]["s"] == node_shape and x[1]["c"] == node_color, g.nodes(data=True))
+            ],
+            edgelist=[
+                edge[0] for edge in filter(lambda x: x[1]=='solid', nx.get_edge_attributes(g,'style').items())
             ]
         )
 
+    nx.draw_networkx_edges(
+        g,
+        pos,
+        edgelist=[
+            edge[0] for edge in filter(lambda x: x[1]=='dashed', nx.get_edge_attributes(g,'style').items())
+        ],
+        style='dashed',
+        edge_color='b',
+        alpha=0.5,
+        width=0.5
+    )
 
     ax.collections[0].set_edgecolor("#333333")
     edge_labels = nx.draw_networkx_edge_labels(
         g, pos=pos, edge_labels=nx.get_edge_attributes(g, "weight"), font_size=5, clip_on=False, alpha=0.6
     )
+
 
     xpos = list(map(lambda p: p[0], pos.values()))
     ypos = list(map(lambda p: p[1], pos.values()))

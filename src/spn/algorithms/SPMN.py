@@ -138,14 +138,39 @@ class SPMN:
                 data_slices_prod = split_cols(remaining_vars_data, ds_context, remaining_vars_scope)
 
                 logging.debug(f'{len(data_slices_prod)} slices found at data_slices_prod: ')
+                print("\n\ncurr_information_set_scope\t"+str(curr_information_set_scope))
+                print("rest_set_scope\t"+str(rest_set_scope))
+                print("remaining_vars_data.shape\t"+str(remaining_vars_data.shape))
+                #print("remaining_vars_data[:20]\n"+str(remaining_vars_data[:20]))
+                print()
+
+                from sklearn.feature_selection import chi2
+                curr_var_indices = list(range(len(curr_information_set_scope)))
+                min_chis = {}
+                for var_idx in curr_var_indices:
+                    print("curr_var_indices:\t"+str(curr_var_indices))
+                    print("rest_var_data shape:\t"+str(np.delete(remaining_vars_data,curr_var_indices,axis=1).shape))
+                    #print("rest_var_data:\n"+str(np.delete(remaining_vars_data,curr_var_indices,axis=1)[:20]))
+                    min_chi2_pvalue = np.min(chi2(
+                            np.abs(np.delete(remaining_vars_data,curr_var_indices,axis=1)),
+                            np.abs(remaining_vars_data[:,var_idx])
+                        )[1])
+                    #print("chi2:\t"+str(chi2(np.abs(np.delete(remaining_vars_data,curr_var_indices,axis=1)),np.abs(remaining_vars_data[:,var_idx]))))
+                    print(str(curr_information_set_scope[var_idx]) + " min_chi2_pvalue:\t" + str(min_chi2_pvalue))
+                    min_chis[curr_information_set_scope[var_idx]] = min_chi2_pvalue
+
 
                 prod_children = []
                 next_remaining_vars_scope = []
                 independent_vars_scope = []
 
                 for correlated_var_set_cluster, correlated_var_set_scope, weight in data_slices_prod:
-
-                    if any(var_scope in correlated_var_set_scope for var_scope in rest_set_scope):
+                    print("correlated_var_set_scope:\t"+str(correlated_var_set_scope))
+                    min_chi = 1
+                    for var in correlated_var_set_scope:
+                        if var in min_chis and min_chis[var] < min_chi:
+                            min_chi = min_chis[var]
+                    if any(var_scope in correlated_var_set_scope for var_scope in rest_set_scope) or min_chi < 0.001:
 
                         next_remaining_vars_scope.extend(correlated_var_set_scope)
 
