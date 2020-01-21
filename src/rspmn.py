@@ -9,7 +9,7 @@ from spn.structure.StatisticalTypes import MetaType
 from spn.algorithms.splitting.RDC import get_split_cols_RDC_py
 from spn.algorithms.SPMNHelper import get_ds_context
 import pandas as pd
-
+from copy import deepcopy
 
 ## using rdc to find correlation
 # ds_context = get_ds_context(train_data_unrolled, [0,1,2,3], spmn_t.params)
@@ -329,11 +329,58 @@ for t in range(1, train_data.shape[1]):
 
 from spn.io.Graphics import plot_spn
 if dataset == "repeated marbles":
-    plot_spn(spmn_t_structure, "repeated_marbles_spmn_t_h.png")
+    plot_spn(spmn_t_structure, "repeated_marbles_spmn_t_h.png", draw_interfaces=True)
 elif dataset == "tiger":
-    plot_spn(spmn_t_structure, "tiger_spmn_t_h_NEWEST.png")
+    plot_spn(spmn_t_structure, "tiger_spmn_t_h_NEWEST.png", draw_interfaces=True)
 
+def unroll_rspmn(rspmn_root, depth):
+    #identify branches based on interface links
+    root = deepcopy(rspmn_root)
+    nodes = get_nodes_by_type(root)
+    inteface_to_branch_dict = dict()
+    for node in nodes:
+        if type(node)==State and len(node.interface_links)==1 and\
+            node.interface_links[0].id not in inteface_to_branch_dict:
+            for child in root.children:
+                # if the interface link leads to this child's s1 node
+                if node.interface_links[0] == child.children[0]:
+                    # then this s2 node leads to this branch
+                    # -- the actual branch is the sibling of the s1 node
+                    inteface_to_branch_dict[node.interface_links[0].id] = deepcopy(child.children[1])
+                    break
+    recursively_replace_s2_with_branch(root, inteface_to_branch_dict, depth-1)
+    # TODO fix scope stuff for MEU ?.
+    # or maybe it'll be easier to just write a new MEU function with a specified depth...
+    root = assign_ids(root)
+    return root
 
+def recursively_replace_s2_with_branch(root, inteface_to_branch_dict, remaining_depth):
+    if remaining_depth == 0:
+        return
+    queue = [root]
+    while len(queue) > 0:
+        node = queue.pop(0)
+        if type(node) is Product or type(node) is Sum or type(node) is Max:
+            for i in range(len(node.children)):
+                child = node.children[i]
+                if type(child) is State and len(child.interface_links)==1:
+                    node.children[i] = deepcopy(inteface_to_branch_dict[child.interface_links[0].id])
+                    root = assign_ids(root)
+                    root = rebuild_scopes_bottom_up(root)
+                    recursively_replace_s2_with_branch(
+                            node.children[i],
+                            inteface_to_branch_dict,
+                            remaining_depth-1
+                        )
+                elif type(child) is Product or type(child) is Sum or type(child) is Max:
+                    queue.append(child)
+
+rspmn2 = unroll_rspmn(spmn_t_structure, 2)
+
+if dataset == "repeated marbles":
+    plot_spn(rspmn2, "repeated_marbles_unroll2.png")
+elif dataset == "tiger":
+    plot_spn(rspmn2, "tiger__unroll2.png")
 
 from spn.algorithms.MEU import meu
 # meu(spmn_t_structure, np.array([[0,1,np.nan,np.nan,np.nan]]))

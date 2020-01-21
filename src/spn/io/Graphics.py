@@ -13,7 +13,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_networkx_obj(spn, feature_labels=None):
+def get_networkx_obj(spn, feature_labels=None, draw_interfaces = False):
     import networkx as nx
     from spn.structure.Base import Sum, Product, Leaf, get_nodes_by_type, Max
     from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility, State
@@ -57,7 +57,7 @@ def get_networkx_obj(spn, feature_labels=None):
         labels[n.id] = label
 
 
-        if isinstance(n, State):
+        if draw_interfaces and isinstance(n, State):
             for i, c in enumerate(n.interface_links):
                 g.add_edge(c.id, n.id, weight=i, style='dashed')
             continue
@@ -76,7 +76,7 @@ def get_networkx_obj(spn, feature_labels=None):
     return g, labels
 
 
-def plot_spn(spn, fname="plot.pdf", feature_labels = None):
+def plot_spn(spn, fname="plot.pdf", feature_labels = None, draw_interfaces = False):
 
     import networkx as nx
     from networkx.drawing.nx_pydot import graphviz_layout
@@ -85,7 +85,7 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None):
 
     plt.clf()
 
-    g, labels = get_networkx_obj(spn, feature_labels)
+    g, labels = get_networkx_obj(spn, feature_labels, draw_interfaces)
 
     pos = graphviz_layout(g, prog="dot")
     # plt.figure(figsize=(18, 12))
@@ -95,9 +95,6 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None):
 
     node_shapes = set(((node_shape[1]["s"],node_shape[1]["c"]) for node_shape in g.nodes(data=True)))
 
-    interface_edges = [
-            edge[0] for edge in filter(lambda x: x[1]=='dashed', nx.get_edge_attributes(g,'style').items())
-        ]
 
 
     for node_shape, node_color in node_shapes:
@@ -121,23 +118,28 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None):
             ]
         )
 
-    nx.draw_networkx_edges(
-        g,
-        pos,
-        edgelist=interface_edges,
-        style='dashed',
-        edge_color='b',
-        alpha=0.5,
-        width=0.5
-    )
+    edge_labels_dict = nx.get_edge_attributes(g, "weight")
 
-    noninterface_edge_labels = nx.get_edge_attributes(g, "weight")
-    for edge in interface_edges:
-        del noninterface_edge_labels[edge]
+    if draw_interfaces:
+        interface_edges = [
+                edge[0] for edge in filter(lambda x: x[1]=='dashed', nx.get_edge_attributes(g,'style').items())
+            ]
+
+        nx.draw_networkx_edges(
+            g,
+            pos,
+            edgelist=interface_edges,
+            style='dashed',
+            edge_color='r',
+            alpha=0.5,
+            width=0.5
+        )
+        for edge in interface_edges:
+            del edge_labels_dict[edge]
 
     ax.collections[0].set_edgecolor("#333333")
     edge_labels = nx.draw_networkx_edge_labels(
-        g, pos=pos, edge_labels=noninterface_edge_labels, font_size=5, clip_on=False, alpha=0.6
+        g, pos=pos, edge_labels=edge_labels_dict, font_size=5, clip_on=False, alpha=0.6
     )
 
 
