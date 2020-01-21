@@ -95,6 +95,11 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None):
 
     node_shapes = set(((node_shape[1]["s"],node_shape[1]["c"]) for node_shape in g.nodes(data=True)))
 
+    interface_edges = [
+            edge[0] for edge in filter(lambda x: x[1]=='dashed', nx.get_edge_attributes(g,'style').items())
+        ]
+
+
     for node_shape, node_color in node_shapes:
         nx.draw(
             g,
@@ -119,18 +124,20 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None):
     nx.draw_networkx_edges(
         g,
         pos,
-        edgelist=[
-            edge[0] for edge in filter(lambda x: x[1]=='dashed', nx.get_edge_attributes(g,'style').items())
-        ],
+        edgelist=interface_edges,
         style='dashed',
         edge_color='b',
         alpha=0.5,
         width=0.5
     )
 
+    noninterface_edge_labels = nx.get_edge_attributes(g, "weight")
+    for edge in interface_edges:
+        del noninterface_edge_labels[edge]
+
     ax.collections[0].set_edgecolor("#333333")
     edge_labels = nx.draw_networkx_edge_labels(
-        g, pos=pos, edge_labels=nx.get_edge_attributes(g, "weight"), font_size=5, clip_on=False, alpha=0.6
+        g, pos=pos, edge_labels=noninterface_edge_labels, font_size=5, clip_on=False, alpha=0.6
     )
 
 
