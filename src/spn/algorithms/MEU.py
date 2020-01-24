@@ -22,22 +22,22 @@ def meu_sum(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     meu_per_node[:,node.id] = np.sum(meu_children * normalized_weighted_likelihood, axis=1)
 
 def meu_prod(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
-    # product node just passes up the utils of whichever child contains util nodes
+    # product node adds together the utilities of its children
+    # if there is only one utility node then only one child of each product node
+    # will have a utility value
     meu_children = meu_per_node[:,[child.id for child in node.children]]
-    # the line below works because product nodes should have only one child containing the utility node.
-    # if more than one utility column is allowed this will have to change.
-    meu_per_node[:,node.id] = meu_children[~np.isnan(meu_children)]
+    meu_per_node[:,node.id] = np.nansum(meu_children,axis=1)
 
 def meu_max(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     meu_children = meu_per_node[:, [child.id for child in node.children]]
     decision_value_given = data[:, node.dec_idx]
-    max_value = np.argmax(meu_children, axis=1)
+    max_value = node.dec_values[np.argmax(meu_children, axis=1)]
     # if data contains a decision value use that otherwise use max
-    child_idx = np.select([np.isnan(decision_value_given), True],
+    dec_value = np.select([np.isnan(decision_value_given), True],
                           [max_value, decision_value_given]).astype(int)
-    child_idx_to_id = lambda idx: node.children[idx].id
-    child_idx_to_id = np.vectorize(child_idx_to_id)
-    child_id = child_idx_to_id(child_idx)
+    dec_value_to_child_id = lambda val: node.children[list(node.dec_values).index(val)].id
+    dec_value_to_child_id = np.vectorize(dec_value_to_child_id)
+    child_id = dec_value_to_child_id(dec_value)
     meu_per_node[:,node.id] = meu_per_node[np.arange(meu_per_node.shape[0]),child_id]
 
 def meu_util(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
@@ -52,7 +52,7 @@ def meu_util(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
 
 _node_bottom_up_meu = {Sum: meu_sum, Product: meu_prod, Max: meu_max, Utility: meu_util}
 
-def meu(node, input_data,
+def meu(root, input_data,
         node_bottom_up_meu=_node_bottom_up_meu,
         in_place=False):
     # valid, err = is_valid(node)
@@ -60,24 +60,26 @@ def meu(node, input_data,
     if in_place:
         data = input_data
     else:
-        data = np.array(input_data)
-    # assumes utility is only one and is at the last
-    # print("input data:", input_data[:, -1])
-    assert np.isnan(data[:, -1]), "Please specify utility variable as NaN"
-    nodes = get_nodes_by_type(node)
+        data = np.copy(input_data)
+    nodes = get_nodes_by_type(root)
+    utility_scope = set()
+    for node in nodes:
+        if type(node) is Utility:
+            utility_scope.add(node.scope[0])
+    assert np.all(np.isnan(data[:, list(utility_scope)])), "Please specify all utility values as np.nan"
     likelihood_per_node = np.zeros((data.shape[0], len(nodes)))
     meu_per_node = np.zeros((data.shape[0], len(nodes)))
     meu_per_node.fill(np.nan)
     # one pass bottom up evaluating the likelihoods
-    likelihood(node, data, dtype=data.dtype, lls_matrix=likelihood_per_node)
+    likelihood(root, data, dtype=data.dtype, lls_matrix=likelihood_per_node)
     eval_spmn_bottom_up_meu(
-            node,
+            root,
             _node_bottom_up_meu,
             meu_per_node=meu_per_node,
             data=data,
             lls_per_node=likelihood_per_node
         )
-    result = meu_per_node[:,node.id]
+    result = meu_per_node[:,root.id]
     return result
 
 
@@ -167,3 +169,37 @@ def eval_spmn_top_down_meu(root, eval_functions,
             delattr(node_type, "_eval_func")
 
     return all_results[root], all_decisions, all_max_nodes
+
+def best_next_decision(root, input_data, in_place=False):
+    if in_place:
+        data = input_data
+    else:
+        data = np.copy(input_data)
+    nodes = get_nodes_by_type(root)
+    dec_dict = {}
+    # find all possible decision values
+    for node in nodes:
+        if type(node) == Max:
+            if node.dec_idx in dec_dict:
+                dec_dict[node.dec_idx].union(set(node.dec_values))
+            else:
+                dec_dict[node.dec_idx] = set(node.dec_values)
+    next_dec_idx = None
+    # find next undefined decision
+    for idx in dec_dict.keys():
+        if np.all(np.isnan(data[:,idx])):
+            next_dec_idx = idx
+            break
+    assert next_dec_idx != None, "please assign all values of next decision to np.nan"
+    # determine best decisions based on meu
+    dec_vals = list(dec_dict[next_dec_idx])
+    best_decisions = np.full((1,data.shape[0]),dec_vals[0])
+    data[:,next_dec_idx] = best_decisions
+    meu_best = meu(root, data)
+    for i in range(1, len(dec_vals)):
+        decisions_i = np.full((1,data.shape[0]), dec_vals[i])
+        data[:,next_dec_idx] = decisions_i
+        meu_i = meu(root, data)
+        best_decisions = np.select([np.greater(meu_i, meu_best),True],[decisions_i, best_decisions])
+        meu_best = np.maximum(meu_i,meu_best)
+    return best_decisions
