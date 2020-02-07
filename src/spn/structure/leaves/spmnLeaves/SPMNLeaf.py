@@ -33,7 +33,6 @@ class Utility(Histogram):
         # has same member variables as histogram
         Histogram.__init__(self, breaks, densities, bin_repr_points, scope,
                            type_=None, meta_type=MetaType.UTILITY)
-        self.test = 'test'
 
 class State(Histogram):
 

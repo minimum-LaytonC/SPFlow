@@ -4,13 +4,14 @@ Created on March 28, 2019
 
 """
 
-from spn.algorithms.MPE import get_node_funtions
+from spn.algorithms.MPE import mpe, get_node_funtions
 from spn.algorithms.Inference import  likelihood, max_likelihood, log_likelihood, sum_likelihood, prod_likelihood
 from spn.algorithms.Validity import is_valid
 from spn.structure.Base import get_nodes_by_type, Max, Leaf, Sum, Product, get_topological_order_layers
 from spn.structure.leaves.histogram.Inference import histogram_likelihood
-from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility
+from spn.structure.leaves.spmnLeaves.SPMNLeaf import State, Utility
 import numpy as np
+from copy import deepcopy
 
 
 def meu_sum(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
@@ -42,9 +43,10 @@ def meu_max(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
 
 def meu_util(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     #returns average value of the utility node
-    util_value = 0
+    util_value = 0.0
     for i in range(len(node.bin_repr_points)):
         util_value += node.bin_repr_points[i] * node.densities[i]
+    util_value /= sum(node.densities)
     utils = np.empty((data.shape[0]))
     utils[:] = util_value
     meu_per_node[:,node.id] = utils * lls_per_node[:,node.id]
@@ -113,8 +115,6 @@ def eval_spmn_top_down_meu(root, eval_functions,
         lls_per_node=None, likelihood_per_node=None):
     """
       evaluates an spn top to down
-
-
       :param root: spnt root
       :param eval_functions: is a dictionary that contains k:Class of the node, v:lambda function that receives as parameters (node, [parent_results], args**) and returns {child : intermediate_result}. This intermediate_result will be passed to child as parent_result. If intermediate_result is None, no further propagation occurs
       :param all_results: is a dictionary that contains k:Class of the node, v:result of the evaluation of the lambda function for that node.
@@ -126,20 +126,16 @@ def eval_spmn_top_down_meu(root, eval_functions,
         all_results = {}
     else:
         all_results.clear()
-
     all_decisions = []
     all_max_nodes = []
     for node_type, func in eval_functions.items():
         if "_eval_func" not in node_type.__dict__:
             node_type._eval_func = []
         node_type._eval_func.append(func)
-
     all_results[root] = [parent_result]
-
     for layer in reversed(get_topological_order_layers(root)):
         for n in layer:
             func = n.__class__._eval_func[-1]
-
             param = all_results[n]
             if type(n) == Max:
                 result, decision_values, max_nodes = func(n, param,
@@ -154,20 +150,16 @@ def eval_spmn_top_down_meu(root, eval_functions,
                     )
             else:
                 result = func(n, param, data=data, lls_per_node=lls_per_node)
-
             if result is not None and not isinstance(n, Leaf):
                 assert isinstance(result, dict)
-
                 for child, param in result.items():
                     if child not in all_results:
                         all_results[child] = []
                     all_results[child].append(param)
-
     for node_type, func in eval_functions.items():
         del node_type._eval_func[-1]
         if len(node_type._eval_func) == 0:
             delattr(node_type, "_eval_func")
-
     return all_results[root], all_decisions, all_max_nodes
 
 def best_next_decision(root, input_data, in_place=False):
@@ -203,3 +195,200 @@ def best_next_decision(root, input_data, in_place=False):
         best_decisions = np.select([np.greater(meu_i, meu_best),True],[decisions_i, best_decisions])
         meu_best = np.maximum(meu_i,meu_best)
     return best_decisions
+
+def rmeu(rspmn, input_data, depth=2): # maybe TODO add args for epsilon (e-greedy exploration) and horizon discount
+    assert type(depth) is int and depth > 0, "depth must be a positive integer."
+    rspmn_root = rspmn.spmn_structure
+    # get all s2 values and map them to s1 values
+    nodes = get_nodes_by_type(rspmn_root)
+    s2_to_s1 = dict() # TODO this should be a member of the RSPMN class
+    dec_indices = [] # TODO determine based on feature_names and decision_nodes
+    for node in nodes:
+        if isinstance(node, State) and len(node.interface_links)==1:
+            s2_to_s1[node]=node.interface_links[0]
+        elif isinstance(node, Max):
+            dec_idx = node.dec_idx
+            if dec_idx not in dec_indices:
+                dec_indices.append(dec_idx)
+    dec_indices.sort()
+    # caching unconditioned MEUs
+    s1_and_decisions_to_s2, s1_and_depth_to_meu = build_rspmn_meu_caches(
+                                                    rspmn,
+                                                    dec_indices,
+                                                    s2_to_s1,
+                                                    depth
+                                                )
+    # TODO clean up by combining and caching more of the following steps
+    # find state_branch corresponding to the s1 value in input
+    # if no state is specified, we must use overall model
+    input_state_branch = rspmn_root
+    input_s1_node = None
+    if not np.isnan(input_data[0]):
+        for state_branch in rspmn_root.children:
+            branch_s1 = state_branch.children[0]
+            if branch_s1.densities[int(input_data[0])] > 0.000000001:
+                input_state_branch = state_branch
+                break
+        input_s1_node = input_state_branch.children[0]
+    # find all possible s1_and_decisions paths given input_data
+    specified_s1_and_decisions = [input_s1_node]+[input_data[dec_idx] for dec_idx in dec_indices]
+    s1_and_dec_paths = list()
+    for s1_and_decisions in s1_and_decisions_to_s2.keys():
+        match = True
+        # if s1 is specified then make sure it matches
+        if not specified_s1_and_decisions[0] is None and\
+                s1_and_decisions[0] != specified_s1_and_decisions[0]:
+            match = False
+        # make sure all specified decisions match
+        for i in range(1, len(s1_and_decisions)):
+            if not np.isnan(specified_s1_and_decisions[i]) and\
+                    s1_and_decisions[i] != specified_s1_and_decisions[i]:
+                match = False
+        # if the specified components match then add to
+        if match: s1_and_dec_paths.append(s1_and_decisions)
+    result_meu = None
+    for path in s1_and_dec_paths:
+        path_s2_nodes = s1_and_decisions_to_s2[path]
+        decisions = path[1:]
+        s1_and_dec_data = deepcopy(input_data)
+        path_meu = 0
+        for i in range(len(dec_indices)):
+            s1_and_dec_data[dec_indices[i]] = decisions[i]
+        s2_prob_norm = 0
+        for s2_node in path_s2_nodes:
+            s2_val = np.argmax(s2_node.densities)
+            # add s2 value to input vector
+            s1_and_dec_data[-1] = s2_val
+            # TODO calculate these from the s1 branch rather than from rspmn_root
+            s2_prob = likelihood(rspmn_root, np.array([s1_and_dec_data])) # TODO cache these ((?? maybe too niche bc variables other than s1 and decs influence as well))
+            s2_meu = meu(rspmn_root, np.array([s1_and_dec_data])) # TODO should have already been cached for path
+            # total s2 value is value at current depth + value of its corresponding s1 one step deeper
+            if depth > 1 and s2_node in s2_to_s1:
+                s2_util = s2_meu + s1_and_depth_to_meu[(s2_to_s1[s2_node],depth-1)]
+            else:
+                s2_util = s2_meu
+            s2_prob_norm += s2_prob
+            path_meu += s2_prob * s2_util
+        # normalize summed meu w.r.t. s2 probabilities
+        path_meu /= s2_prob_norm
+        if result_meu is None or path_meu > result_meu:
+            result_meu = path_meu
+    return result_meu
+
+# TODO remove testing here:
+# s1 values to state branches for marbles {0: state0, 2: state1, 3: state2}
+#input_data =  np.array([np.nan,np.nan,np.nan,np.nan,np.nan])
+#rmeu(rspmn, input_data, depth=2)
+
+def build_rspmn_meu_caches(rspmn, dec_indices, s2_to_s1, depth=2):
+    rspmn_root = rspmn.spmn_structure
+    scope_len = len(rspmn.params.meta_types)
+    # collecting or creating caches
+    if hasattr(rspmn,"s1_and_decisions_to_s2") and rspmn.s1_and_decisions_to_s2:
+        s1_and_decisions_to_s2 = rspmn.s1_and_decisions_to_s2
+    else:
+        s1_and_decisions_to_s2 = get_s1_and_decisions_to_s2(rspmn_root)
+    if hasattr(rspmn, "s1_to_branch") and rspmn.s1_to_branch:
+        s1_to_branch = rspmn.s1_to_branch
+        s1_nodes = [state_branch.children[0] for state_branch in rspmn_root.children]
+    else:
+        s1_to_branch = dict()
+        s1_nodes = list()
+        for state_branch in rspmn_root.children:
+            s1_node = state_branch.children[0]
+            s1_nodes.append(s1_node)
+            s1_to_branch[s1_node] = state_branch
+        print(s1_nodes)
+    if hasattr(rspmn,"s1_and_depth_to_meu") and rspmn.s1_and_depth_to_meu:
+        s1_and_depth_to_meu = rspmn.s1_and_depth_to_meu
+    else:
+        s1_and_depth_to_meu = dict()
+        for s1_node in s1_nodes:
+            state_branch = s1_to_branch[s1_node]
+            state_branch = assign_ids(state_branch)
+            s1_val = np.argmax(s1_node.densities)
+            meu_data_s1 = np.array([[s1_val]+[np.nan]*scope_len])
+            s1_and_depth_to_meu[(s1_node, 1)] = meu(state_branch,meu_data_s1)
+    if hasattr(rspmn, "s1_and_dec_to_s2_prob") and rspmn.s1_and_dec_to_s2_prob:
+        s1_and_dec_to_s2_prob = rspmn.s1_and_dec_to_s2_prob
+    else:
+        s1_and_dec_to_s2_prob = dict()
+    max_cached_depth = max([s1_d[1] for s1_d in s1_and_depth_to_meu.keys()])
+    for d in range(max_cached_depth+1,depth+1):
+        for s1_and_decisions, s2_nodes in s1_and_decisions_to_s2.items():
+            # create input vector for likelihood and MEU calculations
+            s1_node = s1_and_decisions[0]
+            state_branch = s1_to_branch[s1_node]
+            s1_val = np.argmax(s1_node.densities)
+            decisions = s1_and_decisions[1:]
+            s1_and_dec_data = [s1_val]+[np.nan]*scope_len
+            for i in range(len(dec_indices)):
+                s1_and_dec_data[dec_indices[i]] = decisions[i]
+            s2_prob_norm = 0
+            s1_and_decisions_meu = 0
+            for s2_node in s2_nodes:
+                s2_val = np.argmax(s2_node.densities)
+                # add s2 value to input vector
+                s1_and_dec_data[-1] = s2_val
+                # TODO calculate these from the s1 branch rather than from rspmn_root
+                path_data = np.array(s1_and_dec_data)
+                state_branch = assign_ids(state_branch)
+                if tuple(path_data) in s1_and_dec_to_s2_prob:
+                    s2_prob = s1_and_dec_to_s2_prob[tuple(path_data)]
+                else:
+                    s2_prob = likelihood(state_branch,path_data.reshape((1,-1)))
+                    s1_and_dec_to_s2_prob[tuple(path_data)] = s2_prob
+                s2_meu = meu(state_branch, np.array([s1_and_dec_data]))
+                # total s2 value is value at current depth + value of its corresponding s1 one step deeper
+                if s2_node in s2_to_s1 and (s2_to_s1[s2_node],d-1) in s1_and_depth_to_meu:
+                    s2_util = s2_meu + s1_and_depth_to_meu[(s2_to_s1[s2_node],d-1)]
+                else:
+                    s2_util = s2_meu
+                s2_prob_norm += s2_prob
+                s1_and_decisions_meu += s2_prob * s2_util
+            # normalize summed meu w.r.t. s2 probabilities
+            s1_and_decisions_meu /= s2_prob_norm
+            # s1 meu at current depth is meu of best decision path
+            if (s1_node, d) in s1_and_depth_to_meu:
+                s1_and_depth_to_meu[(s1_node, d)] = max(
+                        s1_and_decisions_meu,
+                        s1_and_depth_to_meu[(s1_node, d)]
+                    )
+            else:
+                s1_and_depth_to_meu[(s1_node, d)] = s1_and_decisions_meu
+    # storing caches
+    setattr(rspmn,"s1_and_decisions_to_s2",s1_and_decisions_to_s2)
+    setattr(rspmn, "s1_to_branch", s1_to_branch)
+    setattr(rspmn,"s1_and_depth_to_meu",s1_and_depth_to_meu)
+    setattr(rspmn, "s1_and_dec_to_s2_prob",s1_and_dec_to_s2_prob)
+    rspmn_root = assign_ids(rspmn_root)
+    return s1_and_decisions_to_s2, s1_and_depth_to_meu
+
+def get_s1_and_decisions_to_s2(rspmn_root):
+    s1_and_decisions_to_s2 = dict()
+    for state_branch in rspmn_root.children:
+        s1 = state_branch.children[0]
+        queue = state_branch.children[1:]
+        fill_s1_and_decisions_to_s2(s1_and_decisions_to_s2, queue, [s1])
+    return s1_and_decisions_to_s2
+
+def fill_s1_and_decisions_to_s2(s1_and_decisions_to_s2, queue, path):
+    while len(queue) > 0:
+        node = queue.pop(0)
+        if isinstance(node, Max):
+            for i in range(len(node.dec_values)):
+                dec_val_i = node.dec_values[i]
+                child_i = node.children[i]
+                fill_s1_and_decisions_to_s2(
+                        s1_and_decisions_to_s2,
+                        [child_i],
+                        path+[dec_val_i]
+                    )
+        elif isinstance(node, State):
+            if tuple(path) in s1_and_decisions_to_s2:
+                s1_and_decisions_to_s2[tuple(path)] += [node]
+            else:
+                s1_and_decisions_to_s2[tuple(path)] = [node]
+        elif isinstance(node, Product) or isinstance(node, Sum):
+            for child in node.children:
+                queue.append(child)
