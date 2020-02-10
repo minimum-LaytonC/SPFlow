@@ -7,7 +7,7 @@ Created on March 28, 2019
 from spn.algorithms.MPE import mpe, get_node_funtions
 from spn.algorithms.Inference import  likelihood, max_likelihood, log_likelihood, sum_likelihood, prod_likelihood
 from spn.algorithms.Validity import is_valid
-from spn.structure.Base import get_nodes_by_type, Max, Leaf, Sum, Product, get_topological_order_layers
+from spn.structure.Base import assign_ids, get_nodes_by_type, Max, Leaf, Sum, Product, get_topological_order_layers
 from spn.structure.leaves.histogram.Inference import histogram_likelihood
 from spn.structure.leaves.spmnLeaves.SPMNLeaf import State, Utility
 import numpy as np
@@ -33,13 +33,17 @@ def meu_max(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     meu_children = meu_per_node[:, [child.id for child in node.children]]
     decision_value_given = data[:, node.dec_idx]
     max_value = node.dec_values[np.argmax(meu_children, axis=1)]
+    d_given = np.full(decision_value_given.shape[0], np.nan)
+    mapd = {node.dec_values[i]:i for i in range(len(node.dec_values))}
+    for k, v in mapd.items(): d_given[decision_value_given==k] = v
     # if data contains a decision value use that otherwise use max
-    dec_value = np.select([np.isnan(decision_value_given), True],
-                          [max_value, decision_value_given]).astype(int)
-    dec_value_to_child_id = lambda val: node.children[list(node.dec_values).index(val)].id
-    dec_value_to_child_id = np.vectorize(dec_value_to_child_id)
-    child_id = dec_value_to_child_id(dec_value)
-    meu_per_node[:,node.id] = meu_per_node[np.arange(meu_per_node.shape[0]),child_id]
+    child_id = np.select([np.isnan(d_given), True],
+                          [max_value, d_given]).astype(int)
+    meu_node = meu_children[np.arange(meu_children.shape[0]),child_id]
+    # if decision value given is not in children, assign 0 utility TODO rethink how appropriate 0 utility is here
+    missing_dec_branch = np.logical_and(np.logical_not(np.isnan(decision_value_given)),np.isnan(d_given))
+    meu_node[missing_dec_branch] = 0
+    meu_per_node[:,node.id] = meu_node
 
 def meu_util(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     #returns average value of the utility node
@@ -298,7 +302,6 @@ def build_rspmn_meu_caches(rspmn, dec_indices, s2_to_s1, depth=2):
             s1_node = state_branch.children[0]
             s1_nodes.append(s1_node)
             s1_to_branch[s1_node] = state_branch
-        print(s1_nodes)
     if hasattr(rspmn,"s1_and_depth_to_meu") and rspmn.s1_and_depth_to_meu:
         s1_and_depth_to_meu = rspmn.s1_and_depth_to_meu
     else:
