@@ -25,7 +25,7 @@ def utility_top_down(node, input_vals, lls_per_node, data=None):
 
 
 def add_utility_mpe_support():
-    add_node_mpe(Utility, utility_bottom_up_uVal, utility_top_down)
+    add_node_mpe(Utility, histogram_bottom_up_ll, histogram_top_down)
 
 def add_state_mpe_support():
     add_node_mpe(State, histogram_bottom_up_ll, histogram_top_down)

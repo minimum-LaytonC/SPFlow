@@ -32,7 +32,7 @@ def meu_prod(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
 def meu_max(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     meu_children = meu_per_node[:, [child.id for child in node.children]]
     decision_value_given = data[:, node.dec_idx]
-    max_value = node.dec_values[np.argmax(meu_children, axis=1)]
+    max_value = np.argmax(meu_children, axis=1)
     d_given = np.full(decision_value_given.shape[0], np.nan)
     mapd = {node.dec_values[i]:i for i in range(len(node.dec_values))}
     for k, v in mapd.items(): d_given[decision_value_given==k] = v
@@ -205,12 +205,9 @@ def rmeu(rspmn, input_data, depth=2): # maybe TODO add args for epsilon (e-greed
     rspmn_root = rspmn.spmn_structure
     # get all s2 values and map them to s1 values
     nodes = get_nodes_by_type(rspmn_root)
-    s2_to_s1 = dict() # TODO this should be a member of the RSPMN class
     dec_indices = [] # TODO determine based on feature_names and decision_nodes
     for node in nodes:
-        if isinstance(node, State) and len(node.interface_links)==1:
-            s2_to_s1[node]=node.interface_links[0]
-        elif isinstance(node, Max):
+        if isinstance(node, Max):
             dec_idx = node.dec_idx
             if dec_idx not in dec_indices:
                 dec_indices.append(dec_idx)
@@ -219,7 +216,6 @@ def rmeu(rspmn, input_data, depth=2): # maybe TODO add args for epsilon (e-greed
     s1_and_decisions_to_s2, s1_and_depth_to_meu = build_rspmn_meu_caches(
                                                     rspmn,
                                                     dec_indices,
-                                                    s2_to_s1,
                                                     depth
                                                 )
     # TODO clean up by combining and caching more of the following steps
@@ -266,9 +262,12 @@ def rmeu(rspmn, input_data, depth=2): # maybe TODO add args for epsilon (e-greed
             # TODO calculate these from the s1 branch rather than from rspmn_root
             s2_prob = likelihood(rspmn_root, np.array([s1_and_dec_data])) # TODO cache these ((?? maybe too niche bc variables other than s1 and decs influence as well))
             s2_meu = meu(rspmn_root, np.array([s1_and_dec_data])) # TODO should have already been cached for path
+            s2_util = s2_meu
             # total s2 value is value at current depth + value of its corresponding s1 one step deeper
-            if depth > 1 and s2_node in s2_to_s1:
-                s2_util = s2_meu + s1_and_depth_to_meu[(s2_to_s1[s2_node],depth-1)]
+            if depth > 1 and len(s2_node.interface_links)>0:
+                s2_count = sum([count for count in s2_node.interface_links.values()])
+                for linked_s1, count in s2_node.interface_links.items():
+                    s2_util += s1_and_depth_to_meu[(linked_s1,depth-1)] * (count/s2_count)
             else:
                 s2_util = s2_meu
             s2_prob_norm += s2_prob
@@ -284,7 +283,7 @@ def rmeu(rspmn, input_data, depth=2): # maybe TODO add args for epsilon (e-greed
 #input_data =  np.array([np.nan,np.nan,np.nan,np.nan,np.nan])
 #rmeu(rspmn, input_data, depth=2)
 
-def build_rspmn_meu_caches(rspmn, dec_indices, s2_to_s1, depth=2):
+def build_rspmn_meu_caches(rspmn, dec_indices, depth=2):
     rspmn_root = rspmn.spmn_structure
     scope_len = len(rspmn.params.meta_types)
     # collecting or creating caches
@@ -311,11 +310,15 @@ def build_rspmn_meu_caches(rspmn, dec_indices, s2_to_s1, depth=2):
             state_branch = assign_ids(state_branch)
             s1_val = np.argmax(s1_node.densities)
             meu_data_s1 = np.array([[s1_val]+[np.nan]*scope_len])
-            s1_and_depth_to_meu[(s1_node, 1)] = meu(state_branch,meu_data_s1)
+            s1_and_depth_to_meu[(s1_node, 1)] = meu(state_branch,meu_data_s1).reshape(-1)
     if hasattr(rspmn, "s1_and_dec_to_s2_prob") and rspmn.s1_and_dec_to_s2_prob:
         s1_and_dec_to_s2_prob = rspmn.s1_and_dec_to_s2_prob
     else:
         s1_and_dec_to_s2_prob = dict()
+    if hasattr(rspmn, "s2_to_meu") and rspmn.s2_to_meu:
+        s2_to_meu = rspmn.s2_to_meu
+    else:
+        s2_to_meu = dict()
     max_cached_depth = max([s1_d[1] for s1_d in s1_and_depth_to_meu.keys()])
     for d in range(max_cached_depth+1,depth+1):
         for s1_and_decisions, s2_nodes in s1_and_decisions_to_s2.items():
@@ -333,20 +336,24 @@ def build_rspmn_meu_caches(rspmn, dec_indices, s2_to_s1, depth=2):
                 s2_val = np.argmax(s2_node.densities)
                 # add s2 value to input vector
                 s1_and_dec_data[-1] = s2_val
-                # TODO calculate these from the s1 branch rather than from rspmn_root
                 path_data = np.array(s1_and_dec_data)
                 state_branch = assign_ids(state_branch)
                 if tuple(path_data) in s1_and_dec_to_s2_prob:
                     s2_prob = s1_and_dec_to_s2_prob[tuple(path_data)]
                 else:
-                    s2_prob = likelihood(state_branch,path_data.reshape((1,-1)))
+                    s2_prob = likelihood(state_branch,path_data.reshape(1,-1)).reshape(-1)
                     s1_and_dec_to_s2_prob[tuple(path_data)] = s2_prob
-                s2_meu = meu(state_branch, np.array([s1_and_dec_data]))
-                # total s2 value is value at current depth + value of its corresponding s1 one step deeper
-                if s2_node in s2_to_s1 and (s2_to_s1[s2_node],d-1) in s1_and_depth_to_meu:
-                    s2_util = s2_meu + s1_and_depth_to_meu[(s2_to_s1[s2_node],d-1)]
+                if s2_node in s2_to_meu:
+                    s2_meu = s2_to_meu[s2_node]
                 else:
-                    s2_util = s2_meu
+                    s2_meu = meu(state_branch, np.array([s1_and_dec_data])).reshape(-1)
+                    s2_to_meu[s2_node] = deepcopy(s2_meu)
+                # total s2 value is value at current depth + value of its corresponding s1 one step deeper
+                s2_util = deepcopy(s2_meu)
+                s2_count = sum([count for count in s2_node.interface_links.values()])
+                for linked_s1, count in s2_node.interface_links.items():
+                    if (linked_s1,d-1) in s1_and_depth_to_meu:
+                        s2_util += s1_and_depth_to_meu[(linked_s1,d-1)] * (count/s2_count)
                 s2_prob_norm += s2_prob
                 s1_and_decisions_meu += s2_prob * s2_util
             # normalize summed meu w.r.t. s2 probabilities
@@ -364,6 +371,7 @@ def build_rspmn_meu_caches(rspmn, dec_indices, s2_to_s1, depth=2):
     setattr(rspmn, "s1_to_branch", s1_to_branch)
     setattr(rspmn,"s1_and_depth_to_meu",s1_and_depth_to_meu)
     setattr(rspmn, "s1_and_dec_to_s2_prob",s1_and_dec_to_s2_prob)
+    setattr(rspmn, "s2_to_meu",s2_to_meu)
     rspmn_root = assign_ids(rspmn_root)
     return s1_and_decisions_to_s2, s1_and_depth_to_meu
 
