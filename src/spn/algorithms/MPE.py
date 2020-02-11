@@ -64,14 +64,18 @@ def mpe_max(node, parent_result, data=None, lls_per_node=None, rand_gen=None):
     max_child_branches = np.argmax(children_log_probs, axis=1)
 
     assert data is not None, "data must be passed through to max nodes for proper evaluation."
-    given_decision = data[parent_result, node.dec_idx]
+    decision_value_given = data[parent_result, node.dec_idx]
+
+    d_given = np.full(decision_value_given.shape[0], np.nan)
+    mapd = {node.dec_values[i]:i for i in range(len(node.dec_values))}
+    for k, v in mapd.items(): d_given[decision_value_given==k] = v
 
     children_row_ids = {}
 
     for i, c in enumerate(node.children):
         max_and_no_selection = np.concatenate(
                 (
-                    np.isnan(given_decision).reshape(-1,1),
+                    np.isnan(d_given).reshape(-1,1),
                     (max_child_branches == i).reshape(-1,1)
                 ),
                 axis=1
@@ -79,7 +83,7 @@ def mpe_max(node, parent_result, data=None, lls_per_node=None, rand_gen=None):
         max_or_selected = np.concatenate(
                 (
                     max_and_no_selection.reshape(-1,1),
-                    (given_decision==i).reshape(-1,1)
+                    (d_given==i).reshape(-1,1)
                 ),
                 axis=1
             ).any(axis=1).reshape(-1)
