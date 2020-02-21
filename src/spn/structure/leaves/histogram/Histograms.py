@@ -99,13 +99,13 @@ def create_histogram_leaf(data, ds_context, scope, alpha=1.0, hist_source="numpy
 
     assert len(densities) == len(breaks) - 1
 
-    return Histogram(breaks.tolist(), densities.tolist(), repr_points.tolist(), scope=idx, meta_type=meta_type)
+    return Histogram(list(breaks), list(densities), list(repr_points), scope=idx, meta_type=meta_type)
 
 
 def getHistogramVals(data, meta_type, domain, source="numpy"):
     # check this: https://github.com/theodoregoetz/histogram
 
-    if meta_type == MetaType.DISCRETE or meta_type == MetaType.BINARY:
+    if meta_type == MetaType.DISCRETE or meta_type == MetaType.BINARY or meta_type == MetaType.UTILITY:
         # for discrete, we just have to count
         breaks = np.array([d for d in domain] + [domain[-1] + 1])
         densities, breaks = np.histogram(data, bins=breaks, density=True)

@@ -12,11 +12,11 @@ import pandas as pd
 from copy import deepcopy
 from spn.algorithms.Inference import  likelihood
 
-dataset = "frozen_lake"
+dataset = "elevator_pomdp"
 plot = True
 apply_em = False
 use_chi2 = True
-chi2_threshold = 0.05
+chi2_threshold = 0.4
 likelihood_similarity_threshold = 0.95
 horizon = 2
 
@@ -47,8 +47,8 @@ elif dataset == "tiger":
     scope = [i for i in range(len(scopeVars))]
     meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*2+[MetaType.UTILITY]
 elif dataset == "frozen_lake":
-    df = pd.DataFrame.from_csv("data/"+dataset+"/frozen_lake_1000x10.tsv", sep='\t')
-    data = df.values.reshape(1000,10,3)
+    df = pd.DataFrame.from_csv("data/"+dataset+"/frozen_lake_1000000x10.tsv", sep='\t')
+    data = df.values.reshape(1000000,10,3)
     nans=np.empty((data.shape[0],data.shape[1],1))
     nans[:] = np.nan
     train_data = np.concatenate((nans,data),axis=2)
@@ -72,6 +72,65 @@ elif dataset == "nchain":
     scopeVars=['s1','observation','action','reward']
     scope = [i for i in range(len(scopeVars))]
     meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*2+[MetaType.UTILITY]
+elif dataset == "elevator_mdp":
+    df = pd.DataFrame.from_csv("data/"+dataset+"/elevator_mdp_100000x40.tsv", sep='\t', header=None)
+    data = df.values.reshape(100000,40,18)
+    nans=np.empty((data.shape[0],data.shape[1],1))
+    nans[:] = np.nan
+    train_data = np.concatenate((nans,data),axis=2)
+    train_data[:,0,0]=0
+    decNode=[
+            'close-door',
+            'move-current-dir',
+            'open-door-going-up',
+            'open-door-going-down',
+        ]
+    state = [
+            'elevator-closed',
+            'person-in-elevator-going-down',
+            'elevator-at-floor1',
+            'elevator-at-floor2',
+            'elevator-at-floor3',
+            'person-waiting-up1',
+            'person-waiting-up2',
+            'person-waiting-up3',
+            'elevator-dir-up',
+            'person-waiting-down1',
+            'person-waiting-down2',
+            'person-waiting-down3',
+            'person-in-elevator-going-up',
+        ]
+    utilNode=['reward']
+    scopeVars=['s1']+decNode+state+['reward']
+    partialOrder = [['s1'],state]+[[n] for n in decNode]+['reward']
+    scope = [i for i in range(len(scopeVars))]
+    meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*(len(state)+len(decNode))+[MetaType.UTILITY]
+elif dataset == "elevator_pomdp":
+    df = pd.DataFrame.from_csv("data/"+dataset+"/elevator_pomdp_100000x40.tsv", sep='\t', header=None)
+    data = df.values.reshape(100000,40,10)
+    nans=np.empty((data.shape[0],data.shape[1],1))
+    nans[:] = np.nan
+    train_data = np.concatenate((nans,data),axis=2)
+    train_data[:,0,0]=0
+    decNode=[
+            'close-door',
+            'move-current-dir',
+            'open-door-going-up',
+            'open-door-going-down',
+        ]
+    state = [
+            'person-in-elevator-going-down',
+            'person-waiting-1',
+            'person-waiting-2',
+            'person-waiting-3',
+            'person-in-elevator-going-up',
+        ]
+    utilNode=['reward']
+    scopeVars=['s1']+decNode+state+['reward']
+    partialOrder = [['s1']]+[[n] for n in decNode]+[state+['reward']]
+    scope = [i for i in range(len(scopeVars))]
+    meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*(len(state)+len(decNode))+[MetaType.UTILITY]
+
 
 def get_horizon_train_data(data, horizon):
     # following line should concat each timestep with the next 'horizon' timesteps
@@ -91,8 +150,8 @@ def get_horizon_params(partialOrder, decNode, utilNode, scopeVars, meta_types, h
     partialOrder_h = [] + partialOrder
     for i in range(1,horizon):
         partialOrder_h += [[var+"_t+"+str(i) for var in s] for s in partialOrder[1:]]
-    decNode_h = decNode+[decNode[0]+"_t+"+str(i) for i in range (1,horizon)]
-    utilNode_h = utilNode+[utilNode[0]+"_t+"+str(i) for i in range (1,horizon)]
+    decNode_h = decNode+[decNode[j]+"_t+"+str(i) for i in range (1,horizon) for j in range(len(decNode))]
+    utilNode_h = utilNode+[utilNode[j]+"_t+"+str(i) for i in range (1,horizon) for j in range(len(utilNode))]
     scopeVars_h = scopeVars + [var+"_t+"+str(i) for var in scopeVars[1:] for i in range (1,horizon)]
     meta_types_h = meta_types+meta_types[1:]*(horizon-1)
     return partialOrder_h, decNode_h, utilNode_h, scopeVars_h, meta_types_h
@@ -345,6 +404,7 @@ for t in range(1, train_data.shape[1]):
             mean_likelihood_new = np.mean(likelihood_new)
             min_likelihood_new = np.min(likelihood_new) if likelihood_train_data.shape[0] > 0 else np.nan
             print("\tmean_likelihood similarity:\t" + str(mean_likelihood_new/mean_likelihood_child))
+            print("\tmin_likelihood_new:\t"+str(min_likelihood_new))
             if use_chi2:
                 print("\tmin_chi2_pvalue:\t" + str(min_chi2_pvalue))
             if (use_chi2 and min_chi2_pvalue < chi2_threshold)\
