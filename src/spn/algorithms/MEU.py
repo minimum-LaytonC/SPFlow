@@ -19,8 +19,11 @@ def meu_sum(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     likelihood_children = lls_per_node[:,[child.id for child in node.children]]
     weighted_likelihood = np.array(node.weights)*likelihood_children
     norm = np.sum(weighted_likelihood, axis=1)
-    normalized_weighted_likelihood = weighted_likelihood / norm.reshape(-1,1)
-    meu_per_node[:,node.id] = np.sum(meu_children * normalized_weighted_likelihood, axis=1)
+    if norm > 1/(10**10):
+        normalized_weighted_likelihood = weighted_likelihood / norm.reshape(-1,1)
+        meu_per_node[:,node.id] = np.sum(meu_children * normalized_weighted_likelihood, axis=1)
+    else:
+        meu_per_node[:,node.id] = 0
 
 def meu_prod(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     # product node adds together the utilities of its children
@@ -40,7 +43,7 @@ def meu_max(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     child_id = np.select([np.isnan(d_given), True],
                           [max_value, d_given]).astype(int)
     meu_node = meu_children[np.arange(meu_children.shape[0]),child_id]
-    # if decision value given is not in children, assign 0 utility TODO rethink how appropriate 0 utility is here
+    # if decision value given is not in children, assign 0 utility
     missing_dec_branch = np.logical_and(np.logical_not(np.isnan(decision_value_given)),np.isnan(d_given))
     meu_node[missing_dec_branch] = 0
     meu_per_node[:,node.id] = meu_node
@@ -166,7 +169,8 @@ def eval_spmn_top_down_meu(root, eval_functions,
             delattr(node_type, "_eval_func")
     return all_results[root], all_decisions, all_max_nodes
 
-def best_next_decision(root, input_data, in_place=False):
+def best_next_decision(spmn, input_data, depth=1, in_place=False):
+    root = spmn.spmn_structure
     if in_place:
         data = input_data
     else:
@@ -191,19 +195,26 @@ def best_next_decision(root, input_data, in_place=False):
     dec_vals = list(dec_dict[next_dec_idx])
     best_decisions = np.full((1,data.shape[0]),dec_vals[0])
     data[:,next_dec_idx] = best_decisions
-    meu_best = meu(root, data)
+    if depth == 1:
+        meu_best = meu(root, data)
+    else:
+        meu_best = np.array([rmeu(spmn, data[0], depth)])
     for i in range(1, len(dec_vals)):
         decisions_i = np.full((1,data.shape[0]), dec_vals[i])
         data[:,next_dec_idx] = decisions_i
-        meu_i = meu(root, data)
+        if depth == 1:
+            meu_i = meu(root, data)
+        else:
+            meu_i = np.array([rmeu(spmn, data[0], depth)])
         best_decisions = np.select([np.greater(meu_i, meu_best),True],[decisions_i, best_decisions])
+        data[:,next_dec_idx] = best_decisions
         meu_best = np.maximum(meu_i,meu_best)
     return best_decisions
 
 def rmeu(rspmn, input_data, depth=2): # maybe TODO add args for epsilon (e-greedy exploration) and horizon discount
     assert type(depth) is int and depth > 0, "depth must be a positive integer."
     rspmn_root = rspmn.spmn_structure
-    # get all s2 values and map them to s1 values
+    # find indices of s1_and_decisions
     nodes = get_nodes_by_type(rspmn_root)
     dec_indices = [] # TODO determine based on feature_names and decision_nodes
     for node in nodes:
@@ -278,10 +289,6 @@ def rmeu(rspmn, input_data, depth=2): # maybe TODO add args for epsilon (e-greed
             result_meu = path_meu
     return result_meu
 
-# TODO remove testing here:
-# s1 values to state branches for marbles {0: state0, 2: state1, 3: state2}
-#input_data =  np.array([np.nan,np.nan,np.nan,np.nan,np.nan])
-#rmeu(rspmn, input_data, depth=2)
 
 def build_rspmn_meu_caches(rspmn, dec_indices, depth=2):
     rspmn_root = rspmn.spmn_structure
