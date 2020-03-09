@@ -108,7 +108,8 @@ def getHistogramVals(data, meta_type, domain, source="numpy"):
     if meta_type == MetaType.DISCRETE or meta_type == MetaType.BINARY or meta_type == MetaType.UTILITY:
         # for discrete, we just have to count
         breaks = np.array([d for d in domain] + [domain[-1] + 1])
-        densities, breaks = np.histogram(data, bins=breaks, density=True)
+        densities, breaks = np.histogram(data, bins=breaks, density=False)
+        densities = densities / data.shape[0]
         repr_points = domain
         return breaks, densities, repr_points
 
