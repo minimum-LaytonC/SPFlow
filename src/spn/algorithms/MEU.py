@@ -315,8 +315,8 @@ def build_rspmn_meu_caches(rspmn, dec_indices, depth=2):
         for s1_node in s1_nodes:
             state_branch = s1_to_branch[s1_node]
             state_branch = assign_ids(state_branch)
-            s1_val = np.argmax(s1_node.densities)
-            meu_data_s1 = np.array([[s1_val]+[np.nan]*scope_len])
+            #s1_val = np.argmax(s1_node.densities)
+            meu_data_s1 = np.array([[np.nan]+[np.nan]*scope_len])
             s1_and_depth_to_meu[(s1_node, 1)] = meu(state_branch,meu_data_s1).reshape(-1)
     if hasattr(rspmn, "s1_and_dec_to_s2_prob") and rspmn.s1_and_dec_to_s2_prob:
         s1_and_dec_to_s2_prob = rspmn.s1_and_dec_to_s2_prob

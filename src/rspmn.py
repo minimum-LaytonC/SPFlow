@@ -14,7 +14,7 @@ from spn.algorithms.Inference import  likelihood
 from spn.algorithms.MPE import mpe
 from sklearn.feature_selection import chi2
 
-dataset = "tiger"
+dataset = "crossing_traffic"
 plot = True
 apply_em = False
 use_chi2 = True
@@ -62,16 +62,16 @@ elif dataset == "frozen_lake":
     scope = [i for i in range(len(scopeVars))]
     meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*2+[MetaType.UTILITY]
 elif dataset == "nchain":
-    df = pd.DataFrame.from_csv("data/"+dataset+"/rev_nchain_100000x10.tsv", sep='\t')
+    df = pd.DataFrame.from_csv("data/"+dataset+"/nchain_100000x10.tsv", sep='\t')
     data = df.values.reshape(100000,10,3)
     nans=np.empty((data.shape[0],data.shape[1],1))
     nans[:] = np.nan
     train_data = np.concatenate((nans,data),axis=2)
     train_data[:,0,0]=0
-    partialOrder = [['s1'],['observation'],['action'],['reward']]
+    partialOrder = [['s1'],['action'],['observation','reward']]
     decNode=['action']
     utilNode=['reward']
-    scopeVars=['s1','observation','action','reward']
+    scopeVars=['s1','action','observation','reward']
     scope = [i for i in range(len(scopeVars))]
     meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*2+[MetaType.UTILITY]
 elif dataset == "elevators":
@@ -134,8 +134,8 @@ elif dataset == "skill_teaching":
     #permutation = [0,5,6,7,8,1,2,3,4,9]
     #train_data[:] = train_data[:,permutation]
 elif dataset == "crossing_traffic":
-    df = pd.DataFrame.from_csv("data/"+dataset+"/crossing_traffic_100000x10.tsv", sep='\t', header=None)
-    data = df.values.reshape(100000,10,8)
+    df = pd.DataFrame.from_csv("data/"+dataset+"/crossing_traffic_1000000x10.tsv", sep='\t', header=None)
+    data = df.values.reshape(1000000,10,8)
     nans=np.empty((data.shape[0],data.shape[1],1))
     nans[:] = np.nan
     train_data = np.concatenate((nans,data),axis=2)
@@ -200,57 +200,9 @@ elif dataset == "game_of_life":
     # in data, decisions come before obs. Move decisions after obs.
     #permutation = [0,10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9,19]
     #train_data[:] = train_data[:,permutation]
-elif dataset == "game_of_life":
-    df = pd.DataFrame.from_csv("data/"+dataset+"/game_of_life_100000x10.tsv", sep='\t', header=None)
-    data = df.values.reshape(100000,10,28)
-    nans=np.empty((data.shape[0],data.shape[1],1))
-    nans[:] = np.nan
-    train_data = np.concatenate((nans,data),axis=2)
-    train_data[:,0,0]=0
-    decNode=[
-            'put-out-1-1',
-            'put-out-1-2',
-            'put-out-1-3',
-            'put-out-2-1',
-            'put-out-2-2',
-            'put-out-2-3',
-            'put-out-3-1',
-            'put-out-3-2',
-            'put-out-3-3',
-            'cut-out-1-1',
-            'cut-out-1-2',
-            'cut-out-1-3',
-            'cut-out-2-1',
-            'cut-out-2-2',
-            'cut-out-2-3',
-            'cut-out-3-1',
-            'cut-out-3-2',
-            'cut-out-3-3',
-        ]
-    obs = [
-            'burning-obs-1-1',
-            'burning-obs-1-2',
-            'burning-obs-1-3',
-            'burning-obs-2-1',
-            'burning-obs-2-2',
-            'burning-obs-2-3',
-            'burning-obs-3-1',
-            'burning-obs-3-2',
-            'burning-obs-3-3',
-        ]
-    utilNode=['reward']
-    #scopeVars=['s1']+obs+decNode+['reward']
-    #partialOrder = [['s1'],obs]+[[x] for x in decNode]+[['reward']]
-    scopeVars=['s1']+decNode+obs+['reward']
-    partialOrder = [['s1']]+[[x] for x in decNode]+[obs,['reward']]
-    scope = [i for i in range(len(scopeVars))]
-    meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*(len(obs)+len(decNode))+[MetaType.UTILITY]
-    # in data, decisions come before obs. Move decisions after obs.
-    #permutation = [0,19,20,21,22,23,24,25,26,27,1,2,3,4,5,6,7,8,9,10,11,12,13,,14,15,16,17,18,28]
-    #train_data[:] = train_data[:,permutation]
 elif dataset == "tamarisk":
     df = pd.DataFrame.from_csv("data/"+dataset+"/tamarisk_100000x10.tsv", sep='\t', header=None)
-    data = df.values.reshape(100000,10,19)
+    data = df.values.reshape(100000,10,17)
     nans=np.empty((data.shape[0],data.shape[1],1))
     nans[:] = np.nan
     train_data = np.concatenate((nans,data),axis=2)
@@ -274,6 +226,39 @@ elif dataset == "tamarisk":
             'native-at-reach-obs-2',
             'native-at-reach-obs-3',
             'native-at-reach-obs-4',
+        ]
+    utilNode=['reward']
+    #scopeVars=['s1']+obs+decNode+['reward']
+    #partialOrder = [['s1'],obs]+[[x] for x in decNode]+[['reward']]
+    scopeVars=['s1']+decNode+obs+['reward']
+    partialOrder = [['s1']]+[[x] for x in decNode]+[obs,['reward']]
+    scope = [i for i in range(len(scopeVars))]
+    meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*(len(obs)+len(decNode))+[MetaType.UTILITY]
+    # in data, decisions come before obs. Move decisions after obs.
+    #permutation = [0,10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9,19]
+    #train_data[:] = train_data[:,permutation]
+elif dataset == "traffic_control":
+    df = pd.DataFrame.from_csv("data/"+dataset+"/traffic_control_100000x10.tsv", sep='\t', header=None)
+    data = df.values.reshape(100000,10,13)
+    nans=np.empty((data.shape[0],data.shape[1],1))
+    nans[:] = np.nan
+    train_data = np.concatenate((nans,data),axis=2)
+    train_data[:,0,0]=0
+    decNode=[
+            'advance[$ia3a3]',
+            'advance[$ia3a6]',
+            'advance[$ia6a3]',
+            'advance[$ia6a6]',
+        ]
+    obs = [
+            'traffic-at-stopline-EW-obs[$ia3a3]',
+            'traffic-at-stopline-EW-obs[$ia3a6]',
+            'traffic-at-stopline-EW-obs[$ia6a3]',
+            'traffic-at-stopline-EW-obs[$ia6a6]',
+            'traffic-at-stopline-NS-obs[$ia3a3]',
+            'traffic-at-stopline-NS-obs[$ia3a6]',
+            'traffic-at-stopline-NS-obs[$ia6a3]',
+            'traffic-at-stopline-NS-obs[$ia6a6]',
         ]
     utilNode=['reward']
     #scopeVars=['s1']+obs+decNode+['reward']
@@ -368,6 +353,8 @@ def replace_nextState_with_s2(spmn,s2_scope_idx,s2_count=1, s2_dict=s2_dict):
                 q.put(child)
     return spmn, s2_count
 
+# TODO replace this by using a placeholder for s2 as last infoset in partial order,
+#  --- then just replace that placeholder with method above
 import queue
 def assign_s2(spmn,s2_scope_idx,s2_count=1, s2_dict=s2_dict):
     q = queue.Queue()
@@ -445,6 +432,20 @@ if plot:
     plot_spn(spmn0_structure,"plots/"+dataset+"/spmn0_with_s2.png")
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+#################### < creating template network    ####################
 # create template network by adding a sum node with state branches as children
 spmn_t = SPMN(
         partialOrder,
@@ -459,14 +460,11 @@ spmn_t = SPMN(
 spmn_t_structure = Sum(weights=[1],children=[spmn0_structure])
 spmn_t_structure = assign_ids(spmn_t_structure)
 spmn_t_structure = rebuild_scopes_bottom_up(spmn_t_structure)
+####################    creating template network /> ####################
 
-# learn new sub spmn branches based on state values
-s1_vals = {0}
-val_to_s_branch = dict()
-val_to_s_branch[0]=[spmn_t_structure.children[0]]
-mean_branch_likelihoods = dict()
-for t in range(1, train_data.shape[1]):
-    print("\n\nt:\t"+str(t))
+def set_new_s1_vals(train_data, spmn_t_structure, val_to_s_branch, s2_dict):
+    nans=np.empty((train_data.shape[0],train_data.shape[1],1))
+    nans[:] = np.nan
     # s1 at t is s2 at t-1
     train_data_s2 = np.concatenate((train_data,nans),axis=2)
     prev_step_data = train_data_s2[:,t-1]
@@ -488,6 +486,76 @@ for t in range(1, train_data.shape[1]):
     spmn_t_structure = rebuild_scopes_bottom_up(spmn_t_structure)
     #new_s1s = mpe(spmn_t_structure, prev_step_data)[:,len(scopeVars)]
     #train_data[:,t,0] = new_s1s
+    return train_data
+
+def get_branch_s1_vals(branch):
+    s1_node_vals = np.array(branch.children[0].bin_repr_points)
+    s1_node_nonzero = np.ceil(branch.children[0].densities).astype(bool)
+    #branch_s1_vals is the set of states this branch represents
+    return list(s1_node_vals[s1_node_nonzero].astype(int))
+
+
+def matches_state_branch(new_val, branch, spmn_t_structure,
+        train_data_unrolled, mean_branch_likelihoods,
+        likelihood_train_data, use_chi2, chi2_threshold,
+        likelihood_similarity_threshold):
+    branch_s1_vals = get_branch_s1_vals(branch)
+    print("\n\tstate, branch_index:\t"+str(new_val)+",\t"+str(spmn_t_structure.children.index(branch)))
+    print("\tbranch_s1_vals:\t"+str(branch_s1_vals))
+    testing_s1_vals = branch_s1_vals + [new_val]
+    mask = np.isin(train_data_unrolled[:,0],testing_s1_vals)
+    # select data corresponding to this node's states and the new state
+    train_data_s1_selected = train_data_unrolled[mask]
+    if use_chi2:
+        # look for correlations between state and the other values
+        min_chi2_pvalue = np.min(chi2(
+                np.abs(np.delete(train_data_s1_selected,0,axis=1)),
+                train_data_s1_selected[:,0]
+            )[1])
+    if branch in mean_branch_likelihoods:
+        mean_likelihood_branch = mean_branch_likelihoods[branch]
+    else:
+        likelihood_train_data_branch = train_data_unrolled[
+                np.isin(train_data_unrolled[:,0],branch_s1_vals)
+            ]
+        nans_lh_data=np.empty((likelihood_train_data_branch.shape[0],1))
+        nans_lh_data[:] = np.nan
+        likelihood_train_data_branch = np.concatenate((likelihood_train_data_branch,nans_lh_data),axis=1)
+        # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
+        likelihood_train_data_branch[:,0] = np.nan
+        print("\t< start calculating likelihood for branch "+str(spmn_t_structure.children.index(branch)))
+        mean_likelihood_branch = np.mean(likelihood(branch, likelihood_train_data_branch))
+        print("\tend calculating likelihood for branch "+str(spmn_t_structure.children.index(branch))+ " >")
+        mean_branch_likelihoods[branch] = mean_likelihood_branch
+    likelihood_new = likelihood(branch, likelihood_train_data)
+    mean_likelihood_new = np.mean(likelihood_new)
+    min_likelihood_new = np.min(likelihood_new) if likelihood_train_data.shape[0] > 0 else np.nan
+    print("\tmean_likelihood similarity:\t" + str(mean_likelihood_new/mean_likelihood_branch))
+    print("\tmin_likelihood_new:\t"+str(min_likelihood_new))
+    if use_chi2:
+        print("\tmin_chi2_pvalue:\t" + str(min_chi2_pvalue))
+    if (use_chi2 and min_chi2_pvalue < chi2_threshold)\
+            or mean_likelihood_new/mean_likelihood_branch < likelihood_similarity_threshold \
+            or min_likelihood_new < (1/10**10):
+        # if s1 is correlated with any other variables, then the
+        # then the new value is a functionally different state
+        return False
+    else:
+        return True
+
+
+
+
+# learn new sub spmn branches based on state values
+s1_vals = {0}
+val_to_s_branch = dict()
+val_to_s_branch[0]=[spmn_t_structure.children[0]]
+mean_branch_likelihoods = dict()
+for t in range(1, train_data.shape[1]):
+    print("\n\nt:\t"+str(t))
+    #################### < setting s1 values for next step     ####################
+    train_data = set_new_s1_vals(train_data, spmn_t_structure, val_to_s_branch, s2_dict)
+    ####################    setting s1 values for next step /> ####################
     new_s1s = train_data[:,t,0]
     train_data_unrolled = train_data[:,:t+1].reshape((-1,train_data.shape[2]))
     train_data_unrolled_old = train_data[:,:t].reshape((-1,train_data.shape[2]))
@@ -499,25 +567,26 @@ for t in range(1, train_data.shape[1]):
         partialOrder_h, decNode_h, utilNode_h, scopeVars_h, meta_types_h = get_horizon_params(
                 partialOrder, decNode, utilNode, scopeVars, meta_types, horizon
             )
-        train_data_h[:,:,0] = train_data[:,:train_data_h.shape[1],0]
+        train_data_h[:,:,0] = train_data[:,:train_data_h.shape[1],0] # TODO uhhh, what is happening here?
     train_data_h[:,t,0] = train_data[:,t,0]
     train_data_h_unrolled = train_data_h[:,t].reshape((-1,train_data_h.shape[2]))
     new_s1_vals = set(np.unique(new_s1s).astype(int))#i for i in range(s2_count)} - s1_vals
     old_s1_vals = deepcopy(s1_vals)
     s1_vals = s1_vals.union(new_s1_vals)
     for new_val in new_s1_vals:
-        # check if new s1 val is the same state as any existing states
         likelihood_train_data = train_data_unrolled_t[train_data_unrolled_t[:,0]==new_val]
-        if likelihood_train_data.shape[0] < 1: continue
+        if likelihood_train_data.shape[0] < 1: # TODO This shouldn't ever happen?
+            print("\n\nfound 0 length new_val data slice for new_val == " + str(new_val))
+            continue
         # adding s2s as nan to satisfy code
         nans_lh_data=np.empty((likelihood_train_data.shape[0],1))
         nans_lh_data[:] = np.nan
         likelihood_train_data = np.concatenate((likelihood_train_data,nans_lh_data),axis=1)
         # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
         likelihood_train_data[:,0] = np.nan
-        matchFound = False
         print("\n\n< start matching for "+str(new_val)+" ...")
         linked_branches = list()
+        # check if new s1 val is the same state as any existing states
         if new_val in old_s1_vals:
             linked_branches = val_to_s_branch[new_val]
             counts = np.array(list(s2_dict[new_val].interface_links.values()))
@@ -537,7 +606,6 @@ for t in range(1, train_data.shape[1]):
             # mean_likelihood_new = np.mean(likelihood_new)
             # likelihood_similarity = mean_likelihood_new/np.mean(likelihood_old)
             if min_likelihood_new > (1/10**10): #and likelihood_similarity > likelihood_similarity_threshold:
-                matchFound = True
                 # increase counts for each branch based on likelihoods
                 branch_likelihoods = []
                 for branch in linked_branches:
@@ -549,55 +617,20 @@ for t in range(1, train_data.shape[1]):
                 spmn_t_structure = assign_ids(spmn_t_structure)
                 spmn_t_structure = rebuild_scopes_bottom_up(spmn_t_structure)
                 continue
+        match_found = False
         for child in spmn_t_structure.children:
+            #################### < matching to existing states    ####################
             if child in linked_branches: continue # we've already checked these
-            s1_node_vals = np.array(child.children[0].bin_repr_points)
-            s1_node_nonzero = np.ceil(child.children[0].densities).astype(bool)
-            # child_s1_vals is the set of states this branch represents
-            child_s1_vals = list(s1_node_vals[s1_node_nonzero].astype(int))
-            print("\n\tstate, branch_index:\t"+str(new_val)+",\t"+str(spmn_t_structure.children.index(child)))
-            print("\tchild_s1_vals:\t"+str(child_s1_vals))
-            testing_s1_vals = child_s1_vals + [new_val]
-            mask = np.isin(train_data_unrolled[:,0],testing_s1_vals)
-            # select data corresponding to this node's states and the new state
-            train_data_s1_selected = train_data_unrolled[mask]
-            if use_chi2:
-                # look for correlations between state and the other values
-                min_chi2_pvalue = np.min(chi2(
-                        np.abs(np.delete(train_data_s1_selected,0,axis=1)),
-                        train_data_s1_selected[:,0]
-                    )[1])
-            if child in mean_branch_likelihoods:
-                mean_likelihood_child = mean_branch_likelihoods[child]
-            else:
-                likelihood_train_data_child = train_data_unrolled[
-                        np.isin(train_data_unrolled[:,0],child_s1_vals)
-                    ]
-                nans_lh_data=np.empty((likelihood_train_data_child.shape[0],1))
-                nans_lh_data[:] = np.nan
-                likelihood_train_data_child = np.concatenate((likelihood_train_data_child,nans_lh_data),axis=1)
-                # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
-                likelihood_train_data_child[:,0] = np.nan
-                print("\t< start calculating likelihood for branch "+str(spmn_t_structure.children.index(child)))
-                mean_likelihood_child = np.mean(likelihood(child, likelihood_train_data_child))
-                print("\tend calculating likelihood for branch "+str(spmn_t_structure.children.index(child))+ " >")
-                mean_branch_likelihoods[child] = mean_likelihood_child
-            likelihood_new = likelihood(child, likelihood_train_data)
-            mean_likelihood_new = np.mean(likelihood_new)
-            min_likelihood_new = np.min(likelihood_new) if likelihood_train_data.shape[0] > 0 else np.nan
-            print("\tmean_likelihood similarity:\t" + str(mean_likelihood_new/mean_likelihood_child))
-            print("\tmin_likelihood_new:\t"+str(min_likelihood_new))
-            if use_chi2:
-                print("\tmin_chi2_pvalue:\t" + str(min_chi2_pvalue))
-            if (use_chi2 and min_chi2_pvalue < chi2_threshold)\
-                    or mean_likelihood_new/mean_likelihood_child < likelihood_similarity_threshold \
-                    or min_likelihood_new < (1/10**10):
-                # if s1 is correlated with any other variables, then the
-                # then the new value is a functionally different state
-                continue
-            else:
+            if matches_state_branch(new_val, child, spmn_t_structure,
+                    train_data_unrolled, mean_branch_likelihoods,
+                    likelihood_train_data, use_chi2, chi2_threshold,
+                    likelihood_similarity_threshold):
+                match_found = True
+                ####################    matching to existing states /> ####################
+                #################### < adding new val to existing state    ####################
                 # otherwise the new state is the same as this existing one,
                 # so we add this value to the s1 node for that state-branch
+                child_s1_vals = get_branch_s1_vals(child)
                 child_s1_node = child.children[0]
                 densities = child_s1_node.densities
                 count_child = 0 #np.sum(np.isin(train_data_unrolled[:,0],child_s1_vals))
@@ -623,12 +656,13 @@ for t in range(1, train_data.shape[1]):
                     val_to_s_branch[new_val] += [child]
                 else:
                     val_to_s_branch[new_val] = [child]
-                matchFound = True
                 # as each branch is created to model a different distribution,
                 #   we can expect that no further matches will be found.
+                ####################    adding new val to existing state /> ####################
                 break
         print("end matching for "+str(new_val)+" >")
-        if not matchFound: # if this new state represents a new distribution
+        if not match_found: # if this new state represents a new distribution
+            #################### < creating new branch for state    ####################
             # then create new child SPMN for the state
             print("\n\nnew state\t"+str(new_val)+"\n\n")
             new_spmn_data = train_data_h_unrolled[train_data_h_unrolled[:,0]==new_val]
@@ -655,10 +689,7 @@ for t in range(1, train_data.shape[1]):
             # update weights for each child SPMN
             weights = []
             for child in spmn_t_structure.children:
-                s1_node_vals = np.array(child.children[0].bin_repr_points)
-                s1_node_nonzero = np.ceil(child.children[0].densities).astype(bool)
-                # child_s1_vals is the set of states this branch represents
-                child_s1_vals = list(s1_node_vals[s1_node_nonzero].astype(int))
+                child_s1_vals = get_branch_s1_vals(child)
                 count_child = 0 #np.sum(np.isin(train_data_unrolled[:,0],child_s1_vals))
                 for s1_val in child_s1_vals:
                     if s1_val == 0:
@@ -672,11 +703,12 @@ for t in range(1, train_data.shape[1]):
             spmn_t_structure = update_s_nodes(spmn_t_structure, len(scopeVars), s2_count)
             spmn_t_structure = assign_ids(spmn_t_structure)
             spmn_t_structure = rebuild_scopes_bottom_up(spmn_t_structure)
+            ####################    creating new branch for state /> ####################
 
 spmn_t.spmn_structure = spmn_t_structure
 rspmn = deepcopy(spmn_t)
 
-file = open("data/"+str(dataset)+'/rspmn_'+'303'+'.pkle','wb')
+file = open("data/"+str(dataset)+'/rspmn_'+'407'+'.pkle','wb')
 import pickle
 pickle.dump(rspmn, file)
 file.close()
@@ -741,8 +773,12 @@ from spn.algorithms.MEU import rmeu
 input_data = np.array([0]+[np.nan]*4)
 rmeu(rspmn, input_data, depth=2)
 
+from spn.algorithms.MEU import meu
+input_data = np.array([0]+[np.nan]*4)
+meu(spmn0_structure, [input_data])
+
 # load flspmn (reset caches)
-file = open('frozen_lake_rspmn.pkle','rb')
+file = open('rspmn_407.pkle','rb')
 import pickle
 flrspmn = pickle.load(file)
 file.close()
