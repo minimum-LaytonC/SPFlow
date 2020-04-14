@@ -316,10 +316,13 @@ if plot:
     plot_spn(spmn0_structure, "plots/"+dataset+"/spmn0.png")
 
 
-s2_dict = {}
+s2_dict = dict()
+s1_to_s2s = dict()
 
 import queue
-def replace_nextState_with_s2(spmn,s2_scope_idx,s2_count=1, s2_dict=s2_dict):
+def replace_nextState_with_s2(spmn,s2_scope_idx,s2_count=1, s2_dict=s2_dict, s1_to_s2s=s1_to_s2s):
+    s1 = spmn.children[0]
+    s1_to_s2s[s1] = list()
     scope_t1 = {i for i in range(s2_scope_idx)}
     q = q = queue.Queue()
     q.put(spmn)
@@ -347,6 +350,7 @@ def replace_nextState_with_s2(spmn,s2_scope_idx,s2_count=1, s2_dict=s2_dict):
                     )
                 node.children.append(new_s2)
                 s2_dict[s2_count] = new_s2
+                s1_to_s2s[s1].append(new_s2)
                 s2_count += 1
         elif isinstance(node, Max) or isinstance(node, Sum):
             for child in node.children:
@@ -394,6 +398,7 @@ def assign_s2(spmn,s2_scope_idx,s2_count=1, s2_dict=s2_dict):
                         scope=s2_scope_idx
                     )
                 s2_dict[s2_count] = new_s2
+                s1_to_s2s[s1].append(new_s2)
                 node.children.append(new_s2)
                 s2_count += 1
             else:
@@ -495,10 +500,19 @@ def get_branch_s1_vals(branch):
     return list(s1_node_vals[s1_node_nonzero].astype(int))
 
 
-def matches_state_branch(new_val, branch, spmn_t_structure,
-        train_data_unrolled, mean_branch_likelihoods,
-        likelihood_train_data, use_chi2, chi2_threshold,
-        likelihood_similarity_threshold):
+def matches_state_branch(new_val, branch, spmn_t_structure, train_data, train_data_h, mean_branch_likelihoods, use_chi2, chi2_threshold,
+        likelihood_similarity_threshold, s1_to_s2s, val_to_s_branch, t, d):
+    train_data_unrolled = train_data[:,:t+1].reshape((-1,train_data.shape[2]))
+    likelihood_train_data = train_data_unrolled_t[train_data_unrolled_t[:,0]==new_val]
+    if likelihood_train_data.shape[0] < 1: # TODO This shouldn't ever happen?
+        print("\n\nfound 0 length new_val data slice for new_val == " + str(new_val))
+        continue
+    # adding s2s as nan to satisfy code
+    nans_lh_data=np.empty((likelihood_train_data.shape[0],1))
+    nans_lh_data[:] = np.nan
+    likelihood_train_data = np.concatenate((likelihood_train_data,nans_lh_data),axis=1)
+    # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
+    likelihood_train_data[:,0] = np.nan
     branch_s1_vals = get_branch_s1_vals(branch)
     print("\n\tstate, branch_index:\t"+str(new_val)+",\t"+str(spmn_t_structure.children.index(branch)))
     print("\tbranch_s1_vals:\t"+str(branch_s1_vals))
@@ -515,16 +529,16 @@ def matches_state_branch(new_val, branch, spmn_t_structure,
     if branch in mean_branch_likelihoods:
         mean_likelihood_branch = mean_branch_likelihoods[branch]
     else:
-        likelihood_train_data_branch = train_data_unrolled[
+        likelihood_data_branch = train_data_unrolled[
                 np.isin(train_data_unrolled[:,0],branch_s1_vals)
             ]
-        nans_lh_data=np.empty((likelihood_train_data_branch.shape[0],1))
+        nans_lh_data=np.empty((likelihood_data_branch.shape[0],1))
         nans_lh_data[:] = np.nan
-        likelihood_train_data_branch = np.concatenate((likelihood_train_data_branch,nans_lh_data),axis=1)
+        likelihood_data_branch = np.concatenate((likelihood_data_branch,nans_lh_data),axis=1)
         # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
-        likelihood_train_data_branch[:,0] = np.nan
+        likelihood_data_branch[:,0] = np.nan
         print("\t< start calculating likelihood for branch "+str(spmn_t_structure.children.index(branch)))
-        mean_likelihood_branch = np.mean(likelihood(branch, likelihood_train_data_branch))
+        mean_likelihood_branch = np.mean(likelihood(branch, likelihood_data_branch))
         print("\tend calculating likelihood for branch "+str(spmn_t_structure.children.index(branch))+ " >")
         mean_branch_likelihoods[branch] = mean_likelihood_branch
     likelihood_new = likelihood(branch, likelihood_train_data)
@@ -537,11 +551,32 @@ def matches_state_branch(new_val, branch, spmn_t_structure,
     if (use_chi2 and min_chi2_pvalue < chi2_threshold)\
             or mean_likelihood_new/mean_likelihood_branch < likelihood_similarity_threshold \
             or min_likelihood_new < (1/10**10):
-        # if s1 is correlated with any other variables, then the
+        # if s1 is correlated with any other variables,
         # then the new value is a functionally different state
         return False
-    else:
-        return True
+    elif d > 1:
+        branch_s2s = s1_to_s2s[branch.children[0]]
+        data_copy = deepcopy(train_data)
+        set_new_s1_vals(data_copy, branch, val_to_s_branch, s2_dict)
+        for s2 in branch_s2s:
+            if len(s2.interface_links) > 0:
+                next_branch = list(s2.interface_links.keys())[0]
+
+                if not matches_state_branch(new_val, next_branch, spmn_t_structure,
+                        train_data, train_data_h, mean_branch_likelihoods, # TODO need to update s1s for t+1 and pass data by value
+                        use_chi2, chi2_threshold, likelihood_similarity_threshold,
+                        s1_to_s2s, val_to_s_branch, t+1, d-1):
+                    return False
+            else:
+                # TODO do chi2 testing over data[:,t+1:t+d]
+                train_data_h_unrolled = train_data_h[:,t].reshape((-1,train_data_h.shape[2]))
+                mask = np.isin(train_data_h_unrolled[:,0],testing_s1_vals)
+                train_data_s1_selected = train_data_unrolled[mask]
+                min_chi2_pvalue = np.min(chi2(
+                        np.abs(np.delete(train_data_s1_selected,0,axis=1)),
+                        train_data_s1_selected[:,0]
+                    )[1])
+    return True
 
 
 
@@ -567,10 +602,11 @@ for t in range(1, train_data.shape[1]):
         partialOrder_h, decNode_h, utilNode_h, scopeVars_h, meta_types_h = get_horizon_params(
                 partialOrder, decNode, utilNode, scopeVars, meta_types, horizon
             )
-        train_data_h[:,:,0] = train_data[:,:train_data_h.shape[1],0] # TODO uhhh, what is happening here?
+        train_data_h[:,:,0] = train_data[:,:train_data_h.shape[1],0] # keeping train_data_h s1s updated
     train_data_h[:,t,0] = train_data[:,t,0]
     train_data_h_unrolled = train_data_h[:,t].reshape((-1,train_data_h.shape[2]))
     new_s1_vals = set(np.unique(new_s1s).astype(int))#i for i in range(s2_count)} - s1_vals
+    new_s1_vals = new_s1_vals.difference(old_s1_vals) # only use truly new s1s for matching
     old_s1_vals = deepcopy(s1_vals)
     s1_vals = s1_vals.union(new_s1_vals)
     for new_val in new_s1_vals:
@@ -585,46 +621,14 @@ for t in range(1, train_data.shape[1]):
         # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
         likelihood_train_data[:,0] = np.nan
         print("\n\n< start matching for "+str(new_val)+" ...")
-        linked_branches = list()
         # check if new s1 val is the same state as any existing states
-        if new_val in old_s1_vals:
-            linked_branches = val_to_s_branch[new_val]
-            counts = np.array(list(s2_dict[new_val].interface_links.values()))
-            child_weights = (counts/np.sum(counts)).tolist()
-            state_structure = Sum(weights=child_weights,children=linked_branches)
-            state_structure = assign_ids(state_structure)
-            state_structure = rebuild_scopes_bottom_up(state_structure)
-            likelihood_new = likelihood(state_structure, likelihood_train_data)
-            # likelihood_train_data_old = train_data_unrolled_old[train_data_unrolled_old[:,0]==new_val]
-            # nans_old=np.empty((likelihood_train_data_old.shape[0],1))
-            # nans_old[:]=np.nan
-            # likelihood_train_data_old = np.concatenate((likelihood_train_data_old,nans_old),axis=1)
-            # likelihood_old = likelihood(state_structure, likelihood_train_data_old)
-            spmn_t_structure = assign_ids(spmn_t_structure)
-            spmn_t_structure = rebuild_scopes_bottom_up(spmn_t_structure)
-            min_likelihood_new = np.min(likelihood_new)
-            # mean_likelihood_new = np.mean(likelihood_new)
-            # likelihood_similarity = mean_likelihood_new/np.mean(likelihood_old)
-            if min_likelihood_new > (1/10**10): #and likelihood_similarity > likelihood_similarity_threshold:
-                # increase counts for each branch based on likelihoods
-                branch_likelihoods = []
-                for branch in linked_branches:
-                    branch = assign_ids(branch)
-                    branch_likelihoods.append(likelihood(branch, likelihood_train_data))
-                mpe_branches = np.argmax(branch_likelihoods, axis=0)
-                for i, branch in enumerate(linked_branches):
-                    s2_dict[new_val].interface_links[branch.children[0]] += np.sum(mpe_branches==i)
-                spmn_t_structure = assign_ids(spmn_t_structure)
-                spmn_t_structure = rebuild_scopes_bottom_up(spmn_t_structure)
-                continue
         match_found = False
         for child in spmn_t_structure.children:
             #################### < matching to existing states    ####################
-            if child in linked_branches: continue # we've already checked these
             if matches_state_branch(new_val, child, spmn_t_structure,
-                    train_data_unrolled, mean_branch_likelihoods,
-                    likelihood_train_data, use_chi2, chi2_threshold,
-                    likelihood_similarity_threshold):
+                    train_data, train_data_h, mean_branch_likelihoods,
+                    use_chi2, chi2_threshold, likelihood_similarity_threshold,
+                    s1_to_s2s, val_to_s_branch, t, horizon):
                 match_found = True
                 ####################    matching to existing states /> ####################
                 #################### < adding new val to existing state    ####################
