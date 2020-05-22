@@ -14,17 +14,18 @@ from spn.algorithms.Inference import  likelihood
 from spn.algorithms.MPE import mpe
 from sklearn.feature_selection import chi2
 
-dataset = "skill_teaching"
+dataset = "tiger"
+debug = True
 plot = True
 apply_em = False
 use_chi2 = True
-chi2_threshold = 0.05
-likelihood_similarity_threshold = 0.00001
-horizon = 3
+chi2_threshold = 0.1
+likelihood_similarity_threshold = 0.2
+horizon = 2
 
 if dataset == "repeated_marbles":
     df = pd.DataFrame.from_csv("data/"+dataset+"/repeated_marbles_10000x20.tsv", sep='\t')
-    data = df.values.reshape(10000,20,3)
+    data = df.values.reshape(10000,20,3)[:5000,:6,:]
     nans=np.empty((data.shape[0],data.shape[1],1))
     nans[:] = np.nan
     train_data = np.concatenate((nans,data),axis=2)
@@ -36,8 +37,8 @@ if dataset == "repeated_marbles":
     scope = [i for i in range(len(scopeVars))]
     meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*2+[MetaType.UTILITY]
 elif dataset == "tiger":
-    df = pd.DataFrame.from_csv("data/"+dataset+"/reverse_tiger_100000x5.tsv", sep='\t')
-    data = df.values.reshape(100000,5,3)
+    df = pd.DataFrame.from_csv("data/"+dataset+"/reverse_tiger_100000x10.tsv", sep='\t')
+    data = df.values.reshape(100000,10,3)[:,:6,:]
     nans=np.empty((data.shape[0],data.shape[1],1))
     nans[:] = np.nan
     train_data = np.concatenate((nans,data),axis=2)
@@ -355,6 +356,13 @@ spmn0 = SPMN(
     )
 spmn0_structure = spmn0.learn_spmn(train_data_h[:,0], chi2_threshold)
 
+spmn0_stoptime = time.perf_counter()
+spmn0_runtime = spmn0_stoptime - start_time
+
+print("\nspmn0 runtime:\t" + str(spmn0_runtime))
+print("spmn0 nodes:\t" + str(len(get_nodes_by_type(spmn0_structure))))
+
+
 if plot:
     from spn.io.Graphics import plot_spn
     plot_spn(spmn0_structure, "plots/"+dataset+"/spmn0.png")
@@ -559,8 +567,8 @@ def matches_state_branch(new_val, branch, spmn_t_structure, train_data, train_da
     # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
     likelihood_train_data[:,0] = np.nan
     branch_s1_vals = get_branch_s1_vals(branch)
-    print("\n\tstate, branch_index:\t"+str(new_val)+",\t"+str(spmn_t_structure.children.index(branch)))
-    print("\tbranch_s1_vals:\t"+str(branch_s1_vals))
+    if debug: print("\n\tstate, branch_index:\t"+str(new_val)+",\t"+str(spmn_t_structure.children.index(branch)))
+    if debug: print("\tbranch_s1_vals:\t"+str(branch_s1_vals))
     testing_s1_vals = branch_s1_vals + [new_val]
     mask = np.isin(train_data_unrolled[:,0],testing_s1_vals)
     # select data corresponding to this node's states and the new state
@@ -583,18 +591,18 @@ def matches_state_branch(new_val, branch, spmn_t_structure, train_data, train_da
         likelihood_data_branch = np.concatenate((likelihood_data_branch,nans_lh_data),axis=1)
         # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
         likelihood_data_branch[:,0] = np.nan
-        print("\t< start calculating likelihood for branch "+str(spmn_t_structure.children.index(branch)))
+        if debug: print("\t< start calculating likelihood for branch "+str(spmn_t_structure.children.index(branch)))
         mean_likelihood_branch = np.mean(likelihood(branch, likelihood_data_branch))
-        print("\tend calculating likelihood for branch "+str(spmn_t_structure.children.index(branch))+ " >")
+        if debug: print("\tend calculating likelihood for branch "+str(spmn_t_structure.children.index(branch))+ " >")
         mean_branch_likelihoods[branch] = mean_likelihood_branch
     likelihood_new = likelihood(branch, likelihood_train_data)
     mean_likelihood_new = np.mean(likelihood_new)
     min_likelihood_new = np.min(likelihood_new) if likelihood_train_data.shape[0] > 0 else np.nan
     mean_likelihood_similarity = min_likelihood_new/mean_likelihood_branch
-    print("\tmean_likelihood similarity:\t" + str(mean_likelihood_similarity))
-    print("\tmin_likelihood_new:\t"+str(min_likelihood_new))
+    if debug: print("\tmean_likelihood similarity:\t" + str(mean_likelihood_similarity))
+    if debug: print("\tmin_likelihood_new:\t"+str(min_likelihood_new))
     if use_chi2:
-        print("\tmin_chi2_pvalue:\t" + str(min_chi2_pvalue))
+        if debug: print("\tmin_chi2_pvalue:\t" + str(min_chi2_pvalue))
     if (use_chi2 and min_chi2_pvalue < chi2_threshold)\
             or mean_likelihood_similarity < likelihood_similarity_threshold \
             or min_likelihood_new < (1/10**10):
@@ -615,7 +623,7 @@ def matches_state_branch(new_val, branch, spmn_t_structure, train_data, train_da
                 #         s1_to_s2s, val_to_s_branch, t+1, d-1):
                 #     return False
             #else:
-        print("\n\t\tdeep matching step")
+        if debug: print("\n\t\tdeep matching step")
         train_data_h_unrolled = train_data_h[:,:t+1].reshape((-1,train_data_h.shape[2]))
         mask = np.isin(train_data_h_unrolled[:,0],testing_s1_vals)
         data_h_s1_selected = train_data_h_unrolled[mask]
@@ -627,11 +635,11 @@ def matches_state_branch(new_val, branch, spmn_t_structure, train_data, train_da
                 np.abs(np.delete(data_h_s1_selected,[0]+dec_indices_h,axis=1)),
                 data_h_s1_selected[:,0]
             )[1])
-        print("\t\tmin_chi2_pvalue:\t"+str(min_chi2_pvalue))
+        if debug: print("\t\tmin_chi2_pvalue:\t"+str(min_chi2_pvalue))
         if min_chi2_pvalue < chi2_threshold or np.isnan(min_chi2_pvalue):
-            print("\t\tfailed deep match")
+            if debug: print("\t\tfailed deep match")
             return False, mean_likelihood_similarity, min_likelihood_new, min_chi2_pvalue
-        print("\t\tpassed deep match")
+        if debug: print("\t\tpassed deep match")
     return True, mean_likelihood_similarity, min_likelihood_new, min_chi2_pvalue
 
 
@@ -643,7 +651,7 @@ val_to_s_branch = dict()
 val_to_s_branch[0]=[spmn_t_structure.children[0]]
 mean_branch_likelihoods = dict()
 for t in range(1, train_data.shape[1]):
-    print("\n\n\n\n\n\nt:\t"+str(t))
+    if debug: print("\n\n\n\n\n\nt:\t"+str(t))
     #################### < setting s1 values for next step     ####################
     train_data = set_new_s1_vals(train_data, spmn_t_structure, val_to_s_branch, s2_dict, t)
     ####################    setting s1 values for next step /> ####################
@@ -677,8 +685,8 @@ for t in range(1, train_data.shape[1]):
         likelihood_train_data = np.concatenate((likelihood_train_data,nans_lh_data),axis=1)
         # setting s1s to nan to avoid considering them in likelihood (as they will always be different)
         likelihood_train_data[:,0] = np.nan
-        print("\n\n< start matching for "+str(new_val)+" ...")
-        print("\tt = "+str(t)+", \t num branches = "+str(len(spmn_t_structure.children))+"\n")
+        if debug: print("\n\n< start matching for "+str(new_val)+" ...")
+        if debug: print("\tt = "+str(t)+", \t num branches = "+str(len(spmn_t_structure.children))+"\n")
         # check if new s1 val is the same state as any existing states
         match_found = False
         linked_branches = list()
@@ -761,14 +769,14 @@ for t in range(1, train_data.shape[1]):
                 #   we can expect that no further matches will be found.
                 ####################    adding new val to existing state /> ####################
                 break
-        print("end matching for "+str(new_val)+" >")
+        if debug: print("end matching for "+str(new_val)+" >")
         if not match_found: # if this new state represents a new distribution
             #################### < creating new branch for state    ####################
             # then create new child SPMN for the state
-            print("\n\nnew state\t"+str(new_val)+"\n\n")
-            print("best_mean_similarity:\t"+str(best_mean_similarity))
-            print("best_min_new:\t"+str(best_min_new))
-            print("best_min_chi2:\t"+str(best_min_chi2))
+            if debug: print("\n\nnew state\t"+str(new_val)+"\n\n")
+            if debug: print("best_mean_similarity:\t"+str(best_mean_similarity))
+            if debug: print("best_min_new:\t"+str(best_min_new))
+            if debug: print("best_min_chi2:\t"+str(best_min_chi2))
             new_spmn_data = train_data_h_unrolled[train_data_h_unrolled[:,0]==new_val]
             spmn_new_s1 = SPMN(
                     partialOrder_h,
@@ -809,14 +817,24 @@ for t in range(1, train_data.shape[1]):
             spmn_t_structure = rebuild_scopes_bottom_up(spmn_t_structure)
             ####################    creating new branch for state /> ####################
 
+#tune weights with EM
+nans_em = np.empty((train_data_unrolled.shape[0],1))
+nans_em[:] = np.nan
+train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
+EM_optimization(spmn_t_structure, train_data_em)
+
 # stop run timer
 end_time = time.perf_counter()
 runtime = end_time - start_time
 
+print("\nruntime:\t" + str(runtime))
+print("nodes:\t" + str(len(get_nodes_by_type(spmn_t_structure))))
+print()
+
 spmn_t.spmn_structure = spmn_t_structure
 rspmn = deepcopy(spmn_t)
 
-file = open("data/"+str(dataset)+'/rspmn_'+'504'+'.pkle','wb')
+file = open("data/"+str(dataset)+'/rspmn_'+'506'+'.pkle','wb')
 import pickle
 pickle.dump(rspmn, file)
 file.close()
@@ -826,85 +844,86 @@ if plot:
     plot_spn(spmn_t_structure,  "plots/"+dataset+"/spmn_t.png", draw_interfaces=False)
 
 
-def unroll_rspmn(rspmn_root, depth):
-    #identify branches based on interface links
-    root = deepcopy(rspmn_root)
-    nodes = get_nodes_by_type(root)
-    inteface_to_branch_dict = dict()
-    for node in nodes:
-        if type(node)==State and len(node.interface_links)==1 and\
-            node.interface_links[0].id not in inteface_to_branch_dict:
-            for child in root.children:
-                # if the interface link leads to this child's s1 node
-                if node.interface_links[0] == child.children[0]:
-                    # then this s2 node leads to this branch
-                    # -- the actual branch is the sibling of the s1 node
-                    inteface_to_branch_dict[node.interface_links[0].id] = deepcopy(child.children[1])
-                    break
-    recursively_replace_s2_with_branch(root, inteface_to_branch_dict, depth-1)
-    root = assign_ids(root)
-    return root
-
-def recursively_replace_s2_with_branch(root, inteface_to_branch_dict, remaining_depth):
-    if remaining_depth == 0:
-        return
-    queue = [root]
-    while len(queue) > 0:
-        node = queue.pop(0)
-        if type(node) is Product or type(node) is Sum or type(node) is Max:
-            for i in range(len(node.children)):
-                child = node.children[i]
-                if type(child) is State and len(child.interface_links)==1:
-                    node.children[i] = deepcopy(inteface_to_branch_dict[child.interface_links[0].id])
-                    root = assign_ids(root)
-                    root = rebuild_scopes_bottom_up(root)
-                    recursively_replace_s2_with_branch(
-                            node.children[i],
-                            inteface_to_branch_dict,
-                            remaining_depth-1
-                        )
-                elif type(child) is Product or type(child) is Sum or type(child) is Max:
-                    queue.append(child)
-
-
-unroll_len = 2
-rspmn2 = unroll_rspmn(spmn_t_structure, unroll_len)
-
-if plot:
-    from spn.io.Graphics import plot_spn
-    plot_spn(rspmn2,  "plots/"+dataset+"/unroll"+str(unroll_len)+".png")
-
-rspmn = deepcopy(spmn_t)
-
-# test meu
+# def unroll_rspmn(rspmn_root, depth):
+#     #identify branches based on interface links
+#     root = deepcopy(rspmn_root)
+#     nodes = get_nodes_by_type(root)
+#     inteface_to_branch_dict = dict()
+#     for node in nodes:
+#         if type(node)==State and len(node.interface_links)==1 and\
+#             node.interface_links[0].id not in inteface_to_branch_dict:
+#             for child in root.children:
+#                 # if the interface link leads to this child's s1 node
+#                 if node.interface_links[0] == child.children[0]:
+#                     # then this s2 node leads to this branch
+#                     # -- the actual branch is the sibling of the s1 node
+#                     inteface_to_branch_dict[node.interface_links[0].id] = deepcopy(child.children[1])
+#                     break
+#     recursively_replace_s2_with_branch(root, inteface_to_branch_dict, depth-1)
+#     root = assign_ids(root)
+#     return root
+#
+# def recursively_replace_s2_with_branch(root, inteface_to_branch_dict, remaining_depth):
+#     if remaining_depth == 0:
+#         return
+#     queue = [root]
+#     while len(queue) > 0:
+#         node = queue.pop(0)
+#         if type(node) is Product or type(node) is Sum or type(node) is Max:
+#             for i in range(len(node.children)):
+#                 child = node.children[i]
+#                 if type(child) is State and len(child.interface_links)==1:
+#                     node.children[i] = deepcopy(inteface_to_branch_dict[child.interface_links[0].id])
+#                     root = assign_ids(root)
+#                     root = rebuild_scopes_bottom_up(root)
+#                     recursively_replace_s2_with_branch(
+#                             node.children[i],
+#                             inteface_to_branch_dict,
+#                             remaining_depth-1
+#                         )
+#                 elif type(child) is Product or type(child) is Sum or type(child) is Max:
+#                     queue.append(child)
+#
+#
+# unroll_len = 2
+# rspmn2 = unroll_rspmn(spmn_t_structure, unroll_len)
+#
+# if plot:
+#     from spn.io.Graphics import plot_spn
+#     plot_spn(rspmn2,  "plots/"+dataset+"/unroll"+str(unroll_len)+".png")
+#
+# rspmn = deepcopy(spmn_t)
+#
+# # test meu
 from spn.algorithms.MEU import rmeu
 input_data = np.array([0]+[np.nan]*30)
-rmeu(rspmn, input_data, depth=10)
-
+rmeu(rspmn, input_data, depth=6)
+#
 from spn.algorithms.MEU import meu
 input_data = np.array([0]+[np.nan]*30)
 meu(spmn0_structure, [input_data])
-
-# load flspmn (reset caches)
-file = open("data/"+str(dataset)+'/rspmn_'+'504'+'.pkle','rb')
-import pickle
-rspmn = pickle.load(file)
-file.close()
-rmeu(flrspmn, input_data, depth=6)
-
-# inspect utilities
-from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility
-nodes = get_nodes_by_type(rspmn.spmn_structure)
-util_vals = [node.bin_repr_points for node in nodes if isinstance(node,Utility)]
-state_nodes = [node for node in nodes if isinstance(node,State)]
-max_nodes = [node for node in nodes if isinstance(node,Max)]
-
+#
+# # load flspmn (reset caches)
+# file = open("data/"+str(dataset)+'/rspmn_'+'506'+'.pkle','rb')
+# import pickle
+# rspmn = pickle.load(file)
+# file.close()
+# rmeu(flrspmn, input_data, depth=6)
+#
+# # inspect utilities
+# from spn.structure.leaves.spmnLeaves.SPMNLeaf import Utility
+# nodes = get_nodes_by_type(rspmn.spmn_structure)
+# util_vals = [node.bin_repr_points for node in nodes if isinstance(node,Utility)]
+# state_nodes = [node for node in nodes if isinstance(node,State)]
+# max_nodes = [node for node in nodes if isinstance(node,Max)]
+#
 # tune weights with EM
 # nans_em = np.empty((train_data_unrolled.shape[0],1))
 # nans_em[:] = np.nan
 # train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
 # try:
 #     EM_optimization(spmn_t_structure, train_data_em)
+#
 # except MemoryError:
 #     error = True
 #     partitions = 1
@@ -912,6 +931,7 @@ max_nodes = [node for node in nodes if isinstance(node,Max)]
 #         partitions *= 5
 #         error = False
 #         start = 0
+#
 # for i in range(partitions):
 #     if i < partitions-1:
 #         end = start + train_data_em.shape[0] // partitions
