@@ -75,7 +75,7 @@ def meu(root, input_data,
     for node in nodes:
         if type(node) is Utility:
             utility_scope.add(node.scope[0])
-    assert np.all(np.isnan(data[:, list(utility_scope)])), "Please specify all utility values as np.nan"
+    assert np.all(np.isnan(data[np.arange(data.shape[0]), list(utility_scope)])), "Please specify all utility values as np.nan"
     likelihood_per_node = np.zeros((data.shape[0], len(nodes)))
     meu_per_node = np.zeros((data.shape[0], len(nodes)))
     meu_per_node.fill(np.nan)
@@ -292,7 +292,7 @@ def rmeu(rspmn, input_data, depth=2): # maybe TODO add args for epsilon (e-greed
 
 def build_rspmn_meu_caches(rspmn, dec_indices, depth=2):
     rspmn_root = rspmn.spmn_structure
-    scope_len = len(rspmn.params.meta_types)
+    scope_len = rspmn_root.scope[-1]
     # collecting or creating caches
     if hasattr(rspmn,"s1_and_decisions_to_s2") and rspmn.s1_and_decisions_to_s2:
         s1_and_decisions_to_s2 = rspmn.s1_and_decisions_to_s2
@@ -316,7 +316,7 @@ def build_rspmn_meu_caches(rspmn, dec_indices, depth=2):
             state_branch = s1_to_branch[s1_node]
             state_branch = assign_ids(state_branch)
             #s1_val = np.argmax(s1_node.densities)
-            meu_data_s1 = np.array([[np.nan]+[np.nan]*scope_len])
+            meu_data_s1 = np.array([[np.nan]+[np.nan]*(scope_len)])
             s1_and_depth_to_meu[(s1_node, 1)] = meu(state_branch,meu_data_s1).reshape(-1)
     if hasattr(rspmn, "s1_and_dec_to_s2_prob") and rspmn.s1_and_dec_to_s2_prob:
         s1_and_dec_to_s2_prob = rspmn.s1_and_dec_to_s2_prob
@@ -334,7 +334,7 @@ def build_rspmn_meu_caches(rspmn, dec_indices, depth=2):
             state_branch = s1_to_branch[s1_node]
             s1_val = np.argmax(s1_node.densities)
             decisions = s1_and_decisions[1:]
-            s1_and_dec_data = [s1_val]+[np.nan]*scope_len
+            s1_and_dec_data = [s1_val]+[np.nan]*(scope_len)
             for i in range(len(dec_indices)):
                 s1_and_dec_data[dec_indices[i]] = decisions[i]
             s2_prob_norm = 0

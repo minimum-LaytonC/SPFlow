@@ -153,14 +153,14 @@ class SPMN:
                     from sklearn.feature_selection import chi2
                     min_chis = {}
                     for var_idx in curr_var_indices:
-                        min_chi2_pvalue = np.min(chi2(
+                        min_chi2_pvalue = np.nanmin(chi2(
                                 np.abs(np.delete(remaining_vars_data,curr_var_indices,axis=1)),
                                 np.abs(remaining_vars_data[:,var_idx])
                             )[1])
                         min_chis[curr_information_set_scope[var_idx]] = min_chi2_pvalue
 
                 except:
-                    print("Exception in clustering step, defaulting to independent distribution")
+                    #print("Exception in clustering step, defaulting to independent distribution")
                     exception = True
                     curr_vars_data = remaining_vars_data[:,curr_var_indices]
                     curr_vars_scope = list(curr_information_set_scope)
