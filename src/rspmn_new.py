@@ -290,6 +290,7 @@ class S_RSPMN:
         self.partialOrder = partialOrder
         self.dec_indices = [i for i in range(len(scopeVars)) if scopeVars[i] in decNode]
         self.util_indices = [i for i in range(len(scopeVars)) if scopeVars[i] in utilNode]
+        self.bug_flag = False
 
     def get_horizon_train_data(self, data, horizon):
         nans_h=np.empty(data.shape)
@@ -346,7 +347,21 @@ class S_RSPMN:
                     self.s2_count += 1
             elif isinstance(node, Max) or isinstance(node, Sum):
                 for child in node.children:
-                    q.put(child)
+                    if len(set(child.scope) & scope_t1) == 0:
+                        # then remove it to be replaced with an s2 node
+                        node.children.remove(child)
+                        new_s2 = State(
+                                [self.s2_count,self.s2_count+1],
+                                [1],
+                                [self.s2_count],
+                                scope=self.s2_scope_idx
+                            )
+                        self.SID_to_s2[self.s2_count] = deepcopy(new_s2)
+                        node.children.append(self.SID_to_s2[self.s2_count])
+                        self.s1_to_s2s[s1].append(self.SID_to_s2[self.s2_count])
+                        self.s2_count += 1
+                    else:
+                        q.put(child)
         return spmn
 
     # TODO replace this by using a placeholder for s2 as last infoset in partial order,
@@ -588,7 +603,7 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(spmn0_structure, "test_spmn0.png")
+            plot_spn(spmn0_structure, f"plots/{self.dataset}/spmn0.png")
 
         self.s2_count = 1
         spmn0_structure = self.replace_nextState_with_s2(spmn0_structure) # s2 is last scope index
@@ -601,7 +616,7 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(spmn0_structure,"test_spmn0_with_s2.png")
+            plot_spn(spmn0_structure,f"plots/{self.dataset}/spmn0_with_s2.png")
 
         spmn_t = SPMN(
                 self.partialOrder,
@@ -691,7 +706,7 @@ class S_RSPMN:
             #   to this SID
             matched = False
             print(f"\nstart matching for SID {max_val_SID}")
-            print("max_data_val:\t"+str(max_data_val))
+            print("max_data_val:\t"+str(max_data_val)+"\tremaining_data:\t"+str(np.sum(remaining_steps)))
             print("max_val_SID_indices:\t"+str(max_val_SID_indices))
             start_matching_time = time.perf_counter()
             for branch in self.spmn.spmn_structure.children:
@@ -782,9 +797,12 @@ class S_RSPMN:
                 if h > 1:
                     spmn_new_s1_structure = self.replace_nextState_with_s2(spmn_new_s1_structure)
                 else:
-                    print(f"h = 1 for SID {max_val_SID}")
+                    print(f"\n\th = 1 for SID {max_val_SID}")
+                    self.bug_flag=True
                     spmn_new_s1_structure = self.replace_nextState_with_s2(spmn_new_s1_structure)
+                    self.bug_flag=False
                     from spn.io.Graphics import plot_spn
+                    spmn_new_s1_structure = assign_ids(spmn_new_s1_structure)
                     plot_spn(spmn_new_s1_structure, "replaced_dummies.png")
                     # spmn_new_s1_structure = self.assign_s2(spmn_new_s1_structure)
                 # print("perfoming EM optimization")
@@ -819,7 +837,7 @@ class S_RSPMN:
         nodes = get_nodes_by_type(self.spmn.spmn_structure)
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(self.spmn.spmn_structure, "test_s-rspmn.png")
+            plot_spn(self.spmn.spmn_structure, f"plots/{self.dataset}/s-rspmn.png")
 
 
 
@@ -839,6 +857,178 @@ class S_RSPMN:
 
 
 
+
+
+
+
+
+
+
+
+def get_branch_and_decisions_to_s2(rspmn_root):
+    branch_and_decisions_to_s2 = dict()
+    for branch in rspmn_root.children:
+        queue = branch.children[1:]
+        fill_branch_and_decisions_to_s2(branch_and_decisions_to_s2, queue, [branch])
+    branch_to_decisions_to_s2s = dict()
+    for branch_and_decisions, s2 in branch_and_decisions_to_s2.items():
+        branch = branch_and_decisions[0]
+        decision_path = branch_and_decisions[1:]
+        if branch in branch_to_decisions_to_s2s:
+            branch_to_decisions_to_s2s[branch][decision_path] = s2
+        else:
+            branch_to_decisions_to_s2s[branch] = {decision_path: s2}
+    return branch_to_decisions_to_s2s
+
+def fill_branch_and_decisions_to_s2(branch_and_decisions_to_s2, queue, path):
+    while len(queue) > 0:
+        node = queue.pop(0)
+        if isinstance(node, Max):
+            for i in range(len(node.dec_values)):
+                dec_val_i = node.dec_values[i]
+                child_i = node.children[i]
+                fill_branch_and_decisions_to_s2(
+                        branch_and_decisions_to_s2,
+                        [child_i],
+                        path+[dec_val_i]
+                    )
+        elif isinstance(node, State):
+            if tuple(path) in branch_and_decisions_to_s2:
+                branch_and_decisions_to_s2[tuple(path)] += [node]
+            else:
+                branch_and_decisions_to_s2[tuple(path)] = [node]
+        elif isinstance(node, Product) or isinstance(node, Sum):
+            for child in node.children:
+                queue.append(child)
+
+
+
+def rmeu(rspmn, input_data, depth):
+    assert not np.isnan(input_data[0]), "starting SID (input_data[0]) must be defined."
+    root = rspmn.spmn.spmn_structure
+    branch = rspmn.SID_to_branch[input_data[0]]
+    branch = assign_ids(branch)
+    from spn.algorithms.MEU import meu
+    # set up caches
+    if not hasattr(rspmn,"branch_to_decisions_to_s2s"):
+        branch_to_decisions_to_s2s = get_branch_and_decisions_to_s2(root)
+        setattr(rspmn,"branch_to_decisions_to_s2s",branch_to_decisions_to_s2s)
+    if not hasattr(rspmn,"branch_and_decisions_to_meu"):
+        branch_and_decisions_to_meu = dict()
+        setattr(rspmn,"branch_and_decisions_to_meu",branch_and_decisions_to_meu)
+    if not hasattr(rspmn,"branch_and_decisions_and_s2_to_likelihood"):
+        branch_and_decisions_and_s2_to_likelihood = dict()
+        setattr(rspmn,"branch_and_decisions_and_s2_to_likelihood",
+            branch_and_decisions_and_s2_to_likelihood)
+    if not hasattr(rspmn,"branch_and_depth_to_rmeu"):
+        branch_and_depth_to_rmeu = dict()
+        setattr(rspmn,"branch_and_depth_to_rmeu",branch_and_depth_to_rmeu)
+    max_EU = None
+    # if unconditioned meu for this state branch and depth has already been cached, just return the cached value
+    if np.all(np.isnan(input_data[1:])):
+        if (branch, depth) in rspmn.branch_and_depth_to_rmeu:
+            return rspmn.branch_and_depth_to_rmeu[(branch, depth)]
+        elif depth == 1:
+            max_EU = meu(branch, np.array([input_data])).reshape(-1)
+            rspmn.branch_and_depth_to_rmeu[(branch, depth)] = max_EU
+            return max_EU
+    elif depth == 1:
+        return meu(branch, np.array([input_data]))
+    for decision_path, s2s in rspmn.branch_to_decisions_to_s2s[branch].items():
+        path_data = deepcopy(input_data)
+        ############### for unconditioned inputs, we can use caches ############
+        if np.all(np.isnan(path_data[1:])):
+            for i in range(len(decision_path)):
+                path_data[rspmn.dec_indices[i]] = decision_path[i]
+            if (branch,decision_path) in rspmn.branch_and_decisions_to_meu:
+                path_EU = rspmn.branch_and_decisions_to_meu[(branch,decision_path)]
+            else:
+                branch = assign_ids(branch)
+                path_EU = meu(branch, np.array([path_data])).reshape(-1)
+                rspmn.branch_and_decisions_to_meu[(branch,decision_path)] = path_EU
+            future_EU = 0
+            s2_norm = 0
+            for s2 in s2s:
+                SID = np.argmax(s2.densities).astype(int)
+                path_data[rspmn.s2_scope_idx] = SID
+                if (branch,decision_path,s2) in rspmn.branch_and_decisions_and_s2_to_likelihood:
+                    s2_likelihood = rspmn.branch_and_decisions_and_s2_to_likelihood[(branch,decision_path,s2)]
+                else:
+                    s2_likelihood = likelihood(branch,np.array([path_data])).reshape(-1)
+                    rspmn.branch_and_decisions_and_s2_to_likelihood[(branch,decision_path,s2)] = s2_likelihood
+                next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
+                future_val = rmeu(rspmn, next_data, depth-1)
+                future_EU += future_val * s2_likelihood
+                s2_norm += s2_likelihood
+            future_EU /= s2_norm
+            total_path_EU = path_EU + future_EU
+            if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
+                ##### < problem area? #####
+            #     if SID in rspmn.SID_to_branch:
+            #         s2_norm += s2_likelihood
+            #         next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
+            #         future_val = rmeu(rspmn, next_data, depth-1)
+            #         if future_val:
+            #             future_EU += future_val * s2_likelihood
+            #             s2_norm += s2_likelihood
+            #         else:
+            #             print(f"\n\tsploot. depth:\t{depth}:\tSID:\t{SID}")
+            #     else:
+            #         print(f"\n\tsplat. depth:\t{depth}:\tSID:\t{SID}")
+            # if s2_norm != 0:
+            #     future_EU /= s2_norm
+            #     total_path_EU = path_EU + future_EU
+            #     if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
+            ##### problem area? /> #####
+        ############## for conditioned inputs, we canNOT use caches ############
+        else:
+            print("\n\nhmm this shouldn't happen\n")
+            for i in range(len(decision_path)):
+                if not (input_data[rspmn.dec_indices[i]] == decision_path[i]):
+                    continue # only consider paths that match the input
+                path_data[rspmn.dec_indices[i]] = decision_path[i]
+            branch = assign_ids(branch)
+            path_EU = meu(branch, np.array([path_data])).reshape(-1)
+            future_EU = 0
+            s2_norm = 0
+            for s2 in s2s:
+                SID = np.argmax(s2.densities).astype(int)
+                path_data[rspmn.s2_scope_idx] = SID
+                s2_likelihood = likelihood(branch,np.array([path_data])).reshape(-1)
+                next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
+                if SID in rspmn.SID_to_branch:
+                    future_val = rmeu(rspmn, next_data, depth-1)
+                    if future_val:
+                        future_EU += future_val * s2_likelihood
+                        s2_norm += s2_likelihood
+                    else:
+                        print(f"\n\tsploot. depth:\t{depth}:\tSID:\t{SID}")
+                else:
+                    print(f"\n\tsplat. depth:\t{depth}:\tSID:\t{SID}")
+            if s2_norm != 0:
+                future_EU = future_EU / s2_norm
+                total_path_EU = path_EU + future_EU
+                if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
+    root = assign_ids(root)
+    return max_EU
+
+
+
+
+def clear_caches(rspmn):
+    del rspmn.branch_to_decisions_to_s2s
+    del rspmn.branch_and_decisions_to_meu
+    del rspmn.branch_and_decisions_and_s2_to_likelihood
+    del rspmn.branch_and_depth_to_rmeu
+
+
+def get_action(branch, SID, dec_indices, num_vars=17):
+    for i in range(len(dec_indices)):
+        input_data = np.array([[np.nan]*(num_vars-len(dec_indices))+[0]*len(dec_indices)+[np.nan,SID]])
+        input_data[0][(dec_indices[i])] = 1
+        if likelihood(branch, input_data) > 0.000001:
+            return i
+    return "noop"
 
 
 
@@ -916,165 +1106,4 @@ if __name__ == "__main__":
     #from spn.algorithms.MEU import rmeu
     input_data = np.array([0]+[np.nan]*(args.num_vars+1))
     for i in range(1,args.problem_depth+1):
-        print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn.spmn, input_data, depth=i)))
-
-
-
-def get_action(branch, SID, dec_indices, num_vars=17):
-    for i in range(len(dec_indices)):
-        input_data = np.array([[np.nan]*(num_vars-len(dec_indices))+[0]*len(dec_indices)+[np.nan,SID]])
-        input_data[0][(dec_indices[i])] = 1
-        if likelihood(branch, input_data) > 0.000001:
-            return i
-    return "noop"
-
-
-
-
-
-
-
-
-
-
-
-
-def get_branch_and_decisions_to_s2(rspmn_root):
-    branch_and_decisions_to_s2 = dict()
-    for branch in rspmn_root.children:
-        queue = branch.children[1:]
-        fill_branch_and_decisions_to_s2(branch_and_decisions_to_s2, queue, [branch])
-    branch_to_decisions_to_s2s = dict()
-    for branch_and_decisions, s2 in branch_and_decisions_to_s2.items():
-        branch = branch_and_decisions[0]
-        decision_path = branch_and_decisions[1:]
-        if branch in branch_to_decisions_to_s2s:
-            branch_to_decisions_to_s2s[branch][decision_path] = s2
-        else:
-            branch_to_decisions_to_s2s[branch] = {decision_path: s2}
-    return branch_to_decisions_to_s2s
-
-def fill_branch_and_decisions_to_s2(branch_and_decisions_to_s2, queue, path):
-    while len(queue) > 0:
-        node = queue.pop(0)
-        if isinstance(node, Max):
-            for i in range(len(node.dec_values)):
-                dec_val_i = node.dec_values[i]
-                child_i = node.children[i]
-                fill_branch_and_decisions_to_s2(
-                        branch_and_decisions_to_s2,
-                        [child_i],
-                        path+[dec_val_i]
-                    )
-        elif isinstance(node, State):
-            if tuple(path) in branch_and_decisions_to_s2:
-                branch_and_decisions_to_s2[tuple(path)] += [node]
-            else:
-                branch_and_decisions_to_s2[tuple(path)] = [node]
-        elif isinstance(node, Product) or isinstance(node, Sum):
-            for child in node.children:
-                queue.append(child)
-
-def clear_caches(rspmn):
-    del rspmn.branch_to_decisions_to_s2s
-    del rspmn.branch_and_decisions_to_meu
-    del rspmn.branch_and_decisions_and_s2_to_likelihood
-    del rspmn.branch_and_depth_to_rmeu
-
-
-
-
-def rmeu(rspmn, input_data, depth):
-    assert not np.isnan(input_data[0]), "starting SID (input_data[0]) must be defined."
-    root = rspmn.spmn.spmn_structure
-    branch = rspmn.SID_to_branch[input_data[0]]
-    branch = assign_ids(branch)
-    from spn.algorithms.MEU import meu
-    # set up caches
-    if not hasattr(rspmn,"branch_to_decisions_to_s2s"):
-        branch_to_decisions_to_s2s = get_branch_and_decisions_to_s2(root)
-        setattr(rspmn,"branch_to_decisions_to_s2s",branch_to_decisions_to_s2s)
-    if not hasattr(rspmn,"branch_and_decisions_to_meu"):
-        branch_and_decisions_to_meu = dict()
-        setattr(rspmn,"branch_and_decisions_to_meu",branch_and_decisions_to_meu)
-    if not hasattr(rspmn,"branch_and_decisions_and_s2_to_likelihood"):
-        branch_and_decisions_and_s2_to_likelihood = dict()
-        setattr(rspmn,"branch_and_decisions_and_s2_to_likelihood",
-            branch_and_decisions_and_s2_to_likelihood)
-    if not hasattr(rspmn,"branch_and_depth_to_rmeu"):
-        branch_and_depth_to_rmeu = dict()
-        setattr(rspmn,"branch_and_depth_to_rmeu",branch_and_depth_to_rmeu)
-    max_EU = None
-    # if unconditioned meu for this state branch and depth has already been cached, just return the cached value
-    if np.all(np.isnan(input_data[1:])):
-        if (branch, depth) in rspmn.branch_and_depth_to_rmeu:
-            return rspmn.branch_and_depth_to_rmeu[(branch, depth)]
-        elif depth == 1:
-            max_EU = meu(branch, np.array([input_data]))
-            rspmn.branch_and_depth_to_rmeu[(branch, depth)] = max_EU
-            return max_EU
-    elif depth == 1:
-        return meu(branch, np.array([input_data]))
-    for decision_path, s2s in rspmn.branch_to_decisions_to_s2s[branch].items():
-        path_data = deepcopy(input_data)
-        ############### for unconditioned inputs, we can use caches ############
-        if np.all(np.isnan(path_data[1:])):
-            for i in range(len(decision_path)):
-                path_data[rspmn.dec_indices[i]] = decision_path[i]
-            if (branch,decision_path) in rspmn.branch_and_decisions_to_meu:
-                path_EU = rspmn.branch_and_decisions_to_meu[(branch,decision_path)]
-            else:
-                branch = assign_ids(branch)
-                path_EU = meu(branch, np.array([path_data])).reshape(-1)
-                rspmn.branch_and_decisions_to_meu[(branch,decision_path)] = path_EU
-            future_EU = 0
-            s2_norm = 0
-            for s2 in s2s:
-                SID = np.argmax(s2.densities).astype(int)
-                path_data[rspmn.s2_scope_idx] = SID
-                if (branch,decision_path,s2) in rspmn.branch_and_decisions_and_s2_to_likelihood:
-                    s2_likelihood = rspmn.branch_and_decisions_and_s2_to_likelihood[(branch,decision_path,s2)]
-                else:
-                    s2_likelihood = likelihood(branch,np.array([path_data])).reshape(-1)
-                    rspmn.branch_and_decisions_and_s2_to_likelihood[(branch,decision_path,s2)] = s2_likelihood
-                if SID in rspmn.SID_to_branch:
-                    s2_norm += s2_likelihood
-                    next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
-                    future_val = rmeu(rspmn, next_data, depth-1)
-                    if future_val:
-                        future_EU += future_val * s2_likelihood
-                        s2_norm += s2_likelihood
-            if s2_norm != 0:
-                future_EU /= s2_norm
-                #print(f"depth:\t{depth}\tfuture_EU:\t{future_EU}")
-                total_path_EU = path_EU + future_EU
-                if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
-        ############## for conditioned inputs, we canNOT use caches ############
-        else:
-            for i in range(len(decision_path)):
-                if not (input_data[rspmn.dec_indices[i]] == decision_path[i]):
-                    continue # only consider paths that match the input
-                path_data[rspmn.dec_indices[i]] = decision_path[i]
-            branch = assign_ids(branch)
-            path_EU = meu(branch, np.array([path_data])).reshape(-1)
-            future_EU = 0
-            s2_norm = 0
-            for s2 in s2s:
-                SID = np.argmax(s2.densities).astype(int)
-                path_data[rspmn.s2_scope_idx] = SID
-                s2_likelihood = likelihood(branch,np.array([path_data])).reshape(-1)
-                next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
-                if SID in rspmn.SID_to_branch:
-                    future_val = rmeu(rspmn, next_data, depth-1)
-                    if future_val:
-                        future_EU += future_val * s2_likelihood
-                        s2_norm += s2_likelihood
-            if s2_norm != 0:
-                future_EU = future_EU / s2_norm
-                total_path_EU = path_EU + future_EU
-                if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
-    root = assign_ids(root)
-    return max_EU
-
-#clear_caches(rspmn)
-#rmeu(rspmn, input_data, 2)
+        print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
