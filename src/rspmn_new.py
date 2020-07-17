@@ -305,11 +305,15 @@ class S_RSPMN:
 
     def get_horizon_params(self,partialOrder, decNode, utilNode, scopeVars, meta_types, horizon):
         partialOrder_h = [] + partialOrder
+        # for i in range(1,horizon):
+        #     partialOrder_h += [[var+"_t+"+str(i) for var in s] for s in partialOrder[1:]]
+        # decNode_h = decNode+[decNode[j]+"_t+"+str(i) for i in range (1,horizon) for j in range(len(decNode))]
+        # utilNode_h = utilNode+[utilNode[j]+"_t+"+str(i) for i in range (1,horizon) for j in range(len(utilNode))]
         for i in range(1,horizon):
-            partialOrder_h += [[var+"_t+"+str(i) for var in s] for s in partialOrder[1:]]
-        decNode_h = decNode+[decNode[j]+"_t+"+str(i) for i in range (1,horizon) for j in range(len(decNode))]
-        utilNode_h = utilNode+[utilNode[j]+"_t+"+str(i) for i in range (1,horizon) for j in range(len(utilNode))]
-        scopeVars_h = scopeVars + [var+"_t+"+str(i) for i in range (1,horizon) for var in scopeVars[1:]]
+            partialOrder_h += [[var+str(i) for var in s] for s in partialOrder[1:]]
+        decNode_h = decNode+[decNode[j]+str(i) for i in range (1,horizon) for j in range(len(decNode))]
+        utilNode_h = utilNode+[utilNode[j]+str(i) for i in range (1,horizon) for j in range(len(utilNode))]
+        scopeVars_h = [var for infoset in partialOrder_h for var in infoset]
         meta_types_h = meta_types+meta_types[1:]*(horizon-1)
         return partialOrder_h, decNode_h, utilNode_h, scopeVars_h, meta_types_h
 
@@ -603,7 +607,7 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(spmn0_structure, f"plots/{self.dataset}/spmn0.png")
+            plot_spn(spmn0_structure, f"plots/{self.dataset}/spmn0.png", feature_labels=scopeVars_h)
 
         self.s2_count = 1
         spmn0_structure = self.replace_nextState_with_s2(spmn0_structure) # s2 is last scope index
@@ -616,7 +620,7 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(spmn0_structure,f"plots/{self.dataset}/spmn0_with_s2.png")
+            plot_spn(spmn0_structure,f"plots/{self.dataset}/spmn0_with_s2.png", feature_labels=self.scopeVars+["s2"])
 
         spmn_t = SPMN(
                 self.partialOrder,
@@ -803,7 +807,7 @@ class S_RSPMN:
                     self.bug_flag=False
                     from spn.io.Graphics import plot_spn
                     spmn_new_s1_structure = assign_ids(spmn_new_s1_structure)
-                    plot_spn(spmn_new_s1_structure, "replaced_dummies.png")
+                    plot_spn(spmn_new_s1_structure, "replaced_dummies.png", feature_labels=self.scopeVars+["s2"])
                     # spmn_new_s1_structure = self.assign_s2(spmn_new_s1_structure)
                 # print("perfoming EM optimization")
                 # EM_optimization(spmn_new_s1_structure, new_spmn_em_data, iterations=1, skip_validation=True)
@@ -837,7 +841,8 @@ class S_RSPMN:
         nodes = get_nodes_by_type(self.spmn.spmn_structure)
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(self.spmn.spmn_structure, f"plots/{self.dataset}/s-rspmn.png")
+            plot_spn(self.spmn.spmn_structure, f"plots/{self.dataset}/s-rspmn.png", feature_labels=self.scopeVars+["s2"])
+            plot_spn(self.spmn.spmn_structure, f"plots/{self.dataset}/s-rspmn_interfaces.png", feature_labels=self.scopeVars+["s2"], draw_interfaces=True)
 
 
 
@@ -956,29 +961,28 @@ def rmeu(rspmn, input_data, depth):
                 else:
                     s2_likelihood = likelihood(branch,np.array([path_data])).reshape(-1)
                     rspmn.branch_and_decisions_and_s2_to_likelihood[(branch,decision_path,s2)] = s2_likelihood
-                next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
-                future_val = rmeu(rspmn, next_data, depth-1)
-                future_EU += future_val * s2_likelihood
-                s2_norm += s2_likelihood
-            future_EU /= s2_norm
-            total_path_EU = path_EU + future_EU
-            if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
+            #     next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
+            #     future_val = rmeu(rspmn, next_data, depth-1)
+            #     future_EU += future_val * s2_likelihood
+            #     s2_norm += s2_likelihood
+            # future_EU /= s2_norm
+            # total_path_EU = path_EU + future_EU
+            # if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
                 ##### < problem area? #####
-            #     if SID in rspmn.SID_to_branch:
-            #         s2_norm += s2_likelihood
-            #         next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
-            #         future_val = rmeu(rspmn, next_data, depth-1)
-            #         if future_val:
-            #             future_EU += future_val * s2_likelihood
-            #             s2_norm += s2_likelihood
-            #         else:
-            #             print(f"\n\tsploot. depth:\t{depth}:\tSID:\t{SID}")
-            #     else:
-            #         print(f"\n\tsplat. depth:\t{depth}:\tSID:\t{SID}")
-            # if s2_norm != 0:
-            #     future_EU /= s2_norm
-            #     total_path_EU = path_EU + future_EU
-            #     if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
+                if SID in rspmn.SID_to_branch:
+                    next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
+                    future_val = rmeu(rspmn, next_data, depth-1)
+                    if not (future_val is None):
+                        future_EU += future_val * s2_likelihood
+                        s2_norm += s2_likelihood
+                    else:
+                        print(f"\n\tsploot. depth:\t{depth}:\tSID:\t{SID}")
+                else:
+                    print(f"\n\tsplat. depth:\t{depth}:\tSID:\t{SID}")
+            if s2_norm != 0:
+                future_EU /= s2_norm
+                total_path_EU = path_EU + future_EU
+                if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
             ##### problem area? /> #####
         ############## for conditioned inputs, we canNOT use caches ############
         else:
@@ -998,7 +1002,7 @@ def rmeu(rspmn, input_data, depth):
                 next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
                 if SID in rspmn.SID_to_branch:
                     future_val = rmeu(rspmn, next_data, depth-1)
-                    if future_val:
+                    if not (future_val is None):
                         future_EU += future_val * s2_likelihood
                         s2_norm += s2_likelihood
                     else:
@@ -1010,6 +1014,8 @@ def rmeu(rspmn, input_data, depth):
                 total_path_EU = path_EU + future_EU
                 if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
     root = assign_ids(root)
+    if np.all(np.isnan(input_data[1:])):
+        rspmn.branch_and_depth_to_rmeu[(branch, depth)] = max_EU
     return max_EU
 
 

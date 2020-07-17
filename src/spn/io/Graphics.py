@@ -34,15 +34,22 @@ def get_networkx_obj(spn, feature_labels=None, draw_interfaces = False):
             label = "x"
             shape = 'o'
         elif isinstance(n, Max):
-            label = n.feature_name[0] + n.feature_name[1] + "D" + str(n.id)
+            label = n.feature_name
             shape = 's'
         elif isinstance(n, Utility):
             shape = 'd'
-            label = "U" + str(n.scope[0])
+            if feature_labels is not None:
+                label = feature_labels[n.scope[0]]
+            else:
+                label = "U" + str(n.scope[0])
         elif isinstance(n, State):
             shape = 'o'
-            color = "b"
-            label = "S1" if n.scope[0]==0 else "S2"
+            if n.scope[0]==0:
+                label = "S1"
+                color = "#428df5"
+            else:
+                label = "S2"
+                color = "#ff7d8c"
         else:
             if feature_labels is not None:
                 label = feature_labels[n.scope[0]]
@@ -95,7 +102,7 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None, draw_interfaces = Fal
 
     node_shapes = set(((node_shape[1]["s"],node_shape[1]["c"]) for node_shape in g.nodes(data=True)))
 
-
+    font_size = 6
 
     for node_shape, node_color in node_shapes:
         nx.draw(
@@ -106,9 +113,9 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None, draw_interfaces = Fal
             node_color=node_color,
             edge_color="#888888",
             width=1,
-            node_size=180,
+            node_size=360,
             labels=labels,
-            font_size=4,
+            font_size=font_size,
             node_shape=node_shape,
             nodelist=[
                 sNode[0] for sNode in filter(lambda x: x[1]["s"] == node_shape and x[1]["c"] == node_color, g.nodes(data=True))
@@ -139,20 +146,20 @@ def plot_spn(spn, fname="plot.pdf", feature_labels = None, draw_interfaces = Fal
 
     ax.collections[0].set_edgecolor("#333333")
     edge_labels = nx.draw_networkx_edge_labels(
-        g, pos=pos, edge_labels=edge_labels_dict, font_size=5, clip_on=False, alpha=0.6
+        g, pos=pos, edge_labels=edge_labels_dict, font_size=font_size, clip_on=False, alpha=0.6
     )
 
 
     xpos = list(map(lambda p: p[0], pos.values()))
     ypos = list(map(lambda p: p[1], pos.values()))
 
-    ax.set_xlim(min(xpos) - 20, max(xpos) + 20)
-    ax.set_ylim(min(ypos) - 20, max(ypos) + 20)
+    ax.set_xlim(min(xpos) - 35, max(xpos) + 35)
+    ax.set_ylim(min(ypos) - 35, max(ypos) + 35)
     plt.tight_layout()
     plt.margins(0, 0)
     plt.gca().xaxis.set_major_locator(NullLocator())
     plt.gca().yaxis.set_major_locator(NullLocator())
-    plt.savefig(fname, bbox_inches="tight", pad_inches=0, pdi=1000)
+    plt.savefig(fname, bbox_inches="tight", pad_inches=0, dpi=1000)
 
 
 def plot_spn2(spn, fname="plot.pdf"):
