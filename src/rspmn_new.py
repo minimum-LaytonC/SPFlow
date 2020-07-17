@@ -802,12 +802,10 @@ class S_RSPMN:
                     spmn_new_s1_structure = self.replace_nextState_with_s2(spmn_new_s1_structure)
                 else:
                     print(f"\n\th = 1 for SID {max_val_SID}")
-                    self.bug_flag=True
                     spmn_new_s1_structure = self.replace_nextState_with_s2(spmn_new_s1_structure)
-                    self.bug_flag=False
-                    from spn.io.Graphics import plot_spn
-                    spmn_new_s1_structure = assign_ids(spmn_new_s1_structure)
-                    plot_spn(spmn_new_s1_structure, "replaced_dummies.png", feature_labels=self.scopeVars+["s2"])
+                    # from spn.io.Graphics import plot_spn
+                    # spmn_new_s1_structure = assign_ids(spmn_new_s1_structure)
+                    # plot_spn(spmn_new_s1_structure, "replaced_dummies.png", feature_labels=self.scopeVars+["s2"])
                     # spmn_new_s1_structure = self.assign_s2(spmn_new_s1_structure)
                 # print("perfoming EM optimization")
                 # EM_optimization(spmn_new_s1_structure, new_spmn_em_data, iterations=1, skip_validation=True)
