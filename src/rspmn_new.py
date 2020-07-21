@@ -30,7 +30,8 @@ class S_RSPMN:
                 horizon = 3,
                 problem_depth = 10,
                 samples = 100000,
-                num_vars = None
+                num_vars = None,
+                plot_path = "data"
             ):
         self.dataset = dataset
         self.debug = debug
@@ -42,6 +43,7 @@ class S_RSPMN:
         self.problem_depth = problem_depth
         self.samples = samples
         self.num_vars = num_vars
+        self.plot_path = plot_path
 
         self.s1_node_to_SIDs = dict()
         self.SID_to_branch = dict()
@@ -594,7 +596,7 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(spmn0_structure, f"plots/{self.dataset}/spmn0.png", feature_labels=scopeVars_h)
+            plot_spn(spmn0_structure, f"{self.plot_path}/spmn0.png", feature_labels=scopeVars_h)
 
         self.s2_count = 1
         spmn0_structure = self.replace_nextState_with_s2(spmn0_structure) # s2 is last scope index
@@ -607,7 +609,7 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(spmn0_structure,f"plots/{self.dataset}/spmn0_with_s2.png", feature_labels=self.scopeVars+["s2"])
+            plot_spn(spmn0_structure,f"{self.plot_path}/spmn0_with_s2.png", feature_labels=self.scopeVars+["s2"])
 
         spmn_t = SPMN(
                 self.partialOrder,
@@ -826,8 +828,8 @@ class S_RSPMN:
         nodes = get_nodes_by_type(self.spmn.spmn_structure)
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(self.spmn.spmn_structure, f"plots/{self.dataset}/s-rspmn.png", feature_labels=self.scopeVars+["s2"])
-            plot_spn(self.spmn.spmn_structure, f"plots/{self.dataset}/s-rspmn_interfaces.png", feature_labels=self.scopeVars+["s2"], draw_interfaces=True)
+            plot_spn(self.spmn.spmn_structure, f"{self.plot_path}/s-rspmn.png", feature_labels=self.scopeVars+["s2"])
+            plot_spn(self.spmn.spmn_structure, f"{self.plot_path}/s-rspmn_interfaces.png", feature_labels=self.scopeVars+["s2"], draw_interfaces=True)
 
 
 
@@ -1048,6 +1050,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    import os, sys
+    from os import path
+    plot_path = f"plots/{args.dataset}/{args.samples}x{args.problem_depth}/t:{args.mi_threshold}_h:{args.horizon}"
+    if not path.exists(plot_path):
+        try:
+            os.makedirs(plot_path)
+        except OSError:
+            print ("Creation of the directory %s failed" % plot_path)
+            sys.exit()
+
     rspmn = S_RSPMN(
                 dataset = args.dataset,
                 debug = args.debug==2,
@@ -1058,7 +1070,8 @@ if __name__ == "__main__":
                 horizon = args.horizon,
                 problem_depth = args.problem_depth,
                 samples = args.samples,
-                num_vars = 14 if args.dataset == "crossing_traffic" else args.num_vars
+                num_vars = 14 if args.dataset == "crossing_traffic" else args.num_vars,
+                plot_path = plot_path
             )
 
     df = pd.read_csv(
@@ -1084,7 +1097,14 @@ if __name__ == "__main__":
 
     date = str(datetime.date(datetime.now()))[-5:].replace('-','')
     hour = str(datetime.time((datetime.now())))[:2]
-    file = open(f"data/{args.dataset}/rspmn_{date}_{hour}.pkle",'wb')
+    pkle_path = f"data/{args.dataset}/{args.samples}x{args.problem_depth}/t:{args.mi_threshold}_h{args.horizon}"
+    if not path.exists(pkle_path):
+        try:
+            os.makedirs(pkle_path)
+        except OSError:
+            print ("Creation of the directory %s failed" % pkle_path)
+            file = open(f"data/{args.dataset}/rspmn_{date}_{hour}.pkle",'wb')
+    file = open(f"{pkle_path}/rspmn_{date}_{hour}.pkle",'wb')
     import pickle
     pickle.dump(rspmn, file)
     file.close()
