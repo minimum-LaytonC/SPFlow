@@ -17,6 +17,7 @@ import queue, time
 from datetime import datetime
 import argparse
 from spn.io.Graphics import plot_spn
+from spn.algorithms.MEU import meu
 
 class S_RSPMN:
     def __init__(self,
@@ -911,7 +912,6 @@ def rmeu(rspmn, input_data, depth):
     root = rspmn.spmn.spmn_structure
     branch = rspmn.SID_to_branch[input_data[0]]
     branch = assign_ids(branch)
-    from spn.algorithms.MEU import meu
     # set up caches
     if not hasattr(rspmn,"branch_to_decisions_to_s2s"):
         branch_to_decisions_to_s2s = get_branch_and_decisions_to_s2(root)
@@ -984,11 +984,13 @@ def rmeu(rspmn, input_data, depth):
             ##### problem area? /> #####
         ############## for conditioned inputs, we canNOT use caches ############
         else:
-            print("\n\nhmm this shouldn't happen\n")
+            skip=False
             for i in range(len(decision_path)):
-                if not (input_data[rspmn.dec_indices[i]] == decision_path[i]):
-                    continue # only consider paths that match the input
+                if (not np.isnan(input_data[rspmn.dec_indices[i]])) and \
+                    not (input_data[rspmn.dec_indices[i]] == decision_path[i]):
+                    skip = True # only consider paths that match the input
                 path_data[rspmn.dec_indices[i]] = decision_path[i]
+            if skip: continue
             branch = assign_ids(branch)
             path_EU = meu(branch, np.array([path_data])).reshape(-1)
             future_EU = 0
@@ -1082,7 +1084,7 @@ if __name__ == "__main__":
     df = pd.read_csv(
         f"data/{args.dataset}/{args.dataset}_{args.samples}x{args.problem_depth}.tsv",
         index_col=0, sep='\t',
-        header=0 if args.dataset=="repeated_marbles" or args.dataset=="tiger" else None)
+        header=0 if args.dataset=="repeated_marbles" or args.dataset=="tiger"  or args.dataset=="frozen_lake" else None)
     data = df.values.reshape(args.samples,args.problem_depth,args.num_vars)
 
     if args.dataset == "crossing_traffic":
