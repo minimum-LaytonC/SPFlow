@@ -25,13 +25,12 @@ class S_RSPMN:
                 debug = False,
                 debug1 = True,
                 apply_em = False,
-                mi_threshold = 0.1,
+                mi_threshold = 0.01,
                 deep_match = True,
                 horizon = 3,
                 problem_depth = 10,
                 samples = 100000,
-                num_vars = None,
-                plot_dir = ""
+                num_vars = None
             ):
         self.dataset = dataset
         self.debug = debug
@@ -43,7 +42,6 @@ class S_RSPMN:
         self.problem_depth = problem_depth
         self.samples = samples
         self.num_vars = num_vars
-        self.plot_dir = plot_dir
 
         self.s1_node_to_SIDs = dict()
         self.SID_to_branch = dict()
@@ -525,14 +523,14 @@ class S_RSPMN:
                                 branch_step_indices[branch_sequence_indices_i]
                             ][:,0]
                     )
-            # print("newSID_data: "+str(newSID_data.shape)+"\n"+str(newSID_data[:10]))
-            # print("branch_data: "+str(branch_data.shape)+"\n"+str(branch_data[:10]))
             mi_data = np.append(newSID_data,branch_data,axis=0)
             if mi_data.shape[0] == 0: continue
             mi_data = np.delete(mi_data,[0]+self.dec_indices,axis=1) # remove decision and SID values
-            # print("dec_indices:\t"+str(self.dec_indices))
             # look for correlations between SID and data
-            max_mi = np.max(mutual_info_classif(mi_data,SIDs))
+            max_mi = np.max(mutual_info_classif(
+                    mi_data,
+                    SIDs
+                ))
             if max_mi > self.mi_threshold:
                 print(f"match failed; max_mi:\t{max_mi}")
                 return False
@@ -578,7 +576,7 @@ class S_RSPMN:
             )
         if True:
             print("start learning spmn0")
-            spmn0_structure = spmn0.learn_spmn(train_data_h[:,0], self.mi_threshold)
+            spmn0_structure = spmn0.learn_spmn(train_data_h[:,0])
             spmn0_stoptime = time.perf_counter()
             spmn0_runtime = spmn0_stoptime - start_time
             print("learining spmn0 runtime:\t" + str(spmn0_runtime))
@@ -596,7 +594,7 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(spmn0_structure, f"{self.plot_dir}/spmn0.png", feature_labels=scopeVars_h)
+            plot_spn(spmn0_structure, f"plots/{self.dataset}/spmn0.png", feature_labels=scopeVars_h)
 
         self.s2_count = 1
         spmn0_structure = self.replace_nextState_with_s2(spmn0_structure) # s2 is last scope index
@@ -609,7 +607,8 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(spmn0_structure,f"{self.plot_dir}/spmn0_with_s2.png", feature_labels=self.scopeVars+["s2"])
+            plot_spn(spmn0_structure,f"plots/{self.dataset}/spmn0_with_s2.png", feature_labels=self.scopeVars+["s2"])
+
         spmn_t = SPMN(
                 self.partialOrder,
                 self.decNode,
@@ -699,7 +698,7 @@ class S_RSPMN:
             matched = False
             print(f"\nstart matching for SID {max_val_SID}")
             print("max_data_val:\t"+str(max_data_val)+"\tremaining_data:\t"+str(np.sum(remaining_steps)))
-            #print("max_val_SID_indices:\t"+str(max_val_SID_indices))
+            print("max_val_SID_indices:\t"+str(max_val_SID_indices))
             start_matching_time = time.perf_counter()
             for branch in self.spmn.spmn_structure.children:
                 if self.matches_state_branch(branch, train_data, max_val_SID_indices,
@@ -785,7 +784,7 @@ class S_RSPMN:
                 # print("\nnew_spmn_data[:10]:\n"+str(new_spmn_data[:10]))
                 # print("\nlast_step_with_SID_idx[:5]:\n"+str(last_step_with_SID_idx[:5]))
                 # print("\ntrain_data[:5]:\n"+str(train_data[:5]))
-                spmn_new_s1_structure = spmn_new_s1.learn_spmn(new_spmn_sl_data, self.mi_threshold)
+                spmn_new_s1_structure = spmn_new_s1.learn_spmn(new_spmn_sl_data)
                 if h > 1:
                     spmn_new_s1_structure = self.replace_nextState_with_s2(spmn_new_s1_structure)
                 else:
@@ -827,8 +826,8 @@ class S_RSPMN:
         nodes = get_nodes_by_type(self.spmn.spmn_structure)
         if plot:
             from spn.io.Graphics import plot_spn
-            plot_spn(self.spmn.spmn_structure, f"{self.plot_dir}/s-rspmn.png", feature_labels=self.scopeVars+["s2"])
-            plot_spn(self.spmn.spmn_structure, f"{self.plot_dir}/s-rspmn_interfaces.png", feature_labels=self.scopeVars+["s2"], draw_interfaces=True)
+            plot_spn(self.spmn.spmn_structure, f"plots/{self.dataset}/s-rspmn.png", feature_labels=self.scopeVars+["s2"])
+            plot_spn(self.spmn.spmn_structure, f"plots/{self.dataset}/s-rspmn_interfaces.png", feature_labels=self.scopeVars+["s2"], draw_interfaces=True)
 
 
 
@@ -1040,7 +1039,7 @@ if __name__ == "__main__":
     parser.add_argument("--debug", default=0, type=int)
     parser.add_argument("--plot", default=False, type=bool)
     parser.add_argument("--apply_em", default=False)
-    parser.add_argument("--mi_threshold", default=0.05, type=float)
+    parser.add_argument("--mi_threshold", default=0.01, type=float)
     parser.add_argument("--deep_match", default=True)
     parser.add_argument("--horizon", default=2, type=int)
     parser.add_argument("--problem_depth", default=10, type=int)
@@ -1048,24 +1047,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_vars", default=17, type=int)#total number of columns in dataset
 
     args = parser.parse_args()
-
-    import os, sys
-    from os import path
-
-    plot_dir = os.getcwd()+"/plots/"+f"{args.dataset}/{args.samples}x{args.problem_depth}"
-    if not path.exists(plot_dir):
-        try:
-            os.mkdir(plot_dir)
-        except OSError:
-            print ("Creation of the directory %s failed" % plot_dir)
-            sys.exit()
-    plot_dir += f"/t:{args.mi_threshold}_h:{args.horizon}"
-    if not path.exists(plot_dir):
-        try:
-            os.mkdir(plot_dir)
-        except OSError:
-            print ("Creation of the directory %s failed" % plot_dir)
-            sys.exit()
 
     rspmn = S_RSPMN(
                 dataset = args.dataset,
@@ -1077,8 +1058,7 @@ if __name__ == "__main__":
                 horizon = args.horizon,
                 problem_depth = args.problem_depth,
                 samples = args.samples,
-                num_vars = 14 if args.dataset == "crossing_traffic" else args.num_vars,
-                plot_dir = plot_dir
+                num_vars = 14 if args.dataset == "crossing_traffic" else args.num_vars
             )
 
     df = pd.read_csv(
@@ -1104,19 +1084,7 @@ if __name__ == "__main__":
 
     date = str(datetime.date(datetime.now()))[-5:].replace('-','')
     hour = str(datetime.time((datetime.now())))[:2]
-    #minute = str(datetime.time((datetime.now())))[3:5]
-
-    pkle_dir = os.getcwd()+"/data/"+f"{args.dataset}/{args.samples}x{args.problem_depth}"
-    if not path.exists(pkle_dir):
-        try:
-            os.mkdir(pkle_dir)
-        except OSError:
-            print ("Creation of the directory %s failed" % pkle_dir)
-            file = open(f"rspmn_{date}_{hour}.png")
-            import pickle
-            pickle.dump(rspmn, file)
-            file.close()
-    file = open(f"{pkle_dir}/rspmn_t:{args.mi_threshold}_h:{args.horizon}_{date}_{hour}.pkle",'wb')
+    file = open(f"data/{args.dataset}/rspmn_{date}_{hour}.pkle",'wb')
     import pickle
     pickle.dump(rspmn, file)
     file.close()
