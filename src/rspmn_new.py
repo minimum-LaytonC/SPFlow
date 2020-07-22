@@ -830,8 +830,7 @@ class S_RSPMN:
             from spn.io.Graphics import plot_spn
             plot_spn(self.spmn.spmn_structure, f"{self.plot_path}/s-rspmn.png", feature_labels=self.scopeVars+["s2"])
             plot_spn(self.spmn.spmn_structure, f"{self.plot_path}/s-rspmn_interfaces.png", feature_labels=self.scopeVars+["s2"], draw_interfaces=True)
-
-
+        return train_data
 
 
 
@@ -895,7 +894,7 @@ def fill_branch_and_decisions_to_s2(branch_and_decisions_to_s2, queue, path):
 
 
 
-def rmeu(rspmn, input_data, depth):
+def rmeu(rspmn, input_data, depth, debug=False):
     assert not np.isnan(input_data[0]), "starting SID (input_data[0]) must be defined."
     root = rspmn.spmn.spmn_structure
     branch = rspmn.SID_to_branch[input_data[0]]
@@ -961,9 +960,9 @@ def rmeu(rspmn, input_data, depth):
                     if not (future_val is None):
                         future_EU += future_val * s2_likelihood
                         s2_norm += s2_likelihood
-                    else:
+                    elif debug:
                         print(f"\n\tsploot. depth:\t{depth}:\tSID:\t{SID}")
-                else:
+                elif debug:
                     print(f"\n\tsplat. depth:\t{depth}:\tSID:\t{SID}")
             if s2_norm != 0:
                 future_EU /= s2_norm
@@ -993,9 +992,9 @@ def rmeu(rspmn, input_data, depth):
                     if not (future_val is None):
                         future_EU += future_val * s2_likelihood
                         s2_norm += s2_likelihood
-                    else:
+                    elif debug:
                         print(f"\n\tsploot. depth:\t{depth}:\tSID:\t{SID}")
-                else:
+                elif debug:
                     print(f"\n\tsplat. depth:\t{depth}:\tSID:\t{SID}")
             if s2_norm != 0:
                 future_EU = future_EU / s2_norm
@@ -1093,10 +1092,12 @@ if __name__ == "__main__":
                 axis=2
             )
 
-    rspmn.learn_s_rspmn(data, plot = args.plot)
+    train_data = rspmn.learn_s_rspmn(data, plot = args.plot)
 
     date = str(datetime.date(datetime.now()))[-5:].replace('-','')
     hour = str(datetime.time((datetime.now())))[:2]
+
+    import pickle
     pkle_path = f"data/{args.dataset}/{args.samples}x{args.problem_depth}/t:{args.mi_threshold}_h{args.horizon}"
     if not path.exists(pkle_path):
         try:
@@ -1104,12 +1105,29 @@ if __name__ == "__main__":
         except OSError:
             print ("Creation of the directory %s failed" % pkle_path)
             file = open(f"data/{args.dataset}/rspmn_{date}_{hour}.pkle",'wb')
-    file = open(f"{pkle_path}/rspmn_{date}_{hour}.pkle",'wb')
-    import pickle
-    pickle.dump(rspmn, file)
-    file.close()
+            pickle.dump(rspmn, file)
+            file.close()
+            data_SIDs = train_data[:,:,0].reshape(args.samples,args.problem_depth)
+            np.savetxt(f"data/{args.dataset}/{date}_{hour}_data_SIDs.tsv", data_SIDs, delimiter='\t')
+    if path.exists(pkle_path):
+        file = open(f"{pkle_path}/rspmn_{date}_{hour}.pkle",'wb')
+        pickle.dump(rspmn, file)
+        file.close()
+        data_SIDs = train_data[:,:,0].reshape(args.samples,args.problem_depth)
+        np.savetxt(f"{pkle_path}/data_SIDs.tsv", data_SIDs, delimiter='\t')
 
-    #from spn.algorithms.MEU import rmeu
-    input_data = np.array([0]+[np.nan]*(args.num_vars+1))
-    for i in range(1,args.problem_depth+1):
+    input_data = np.array([0]+[np.nan]*(self.num_vars+1))
+    for i in range(1,self.problem_depth+1):
+        print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
+
+    print("\napplying EM\n")
+    clear_caches(self)
+    train_data_unrolled = train_data.reshape((-1,train_data.shape[2]))
+    nans_em = np.empty((train_data_unrolled.shape[0],1))
+    nans_em[:] = np.nan
+    train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
+    EM_optimization(self.spmn.spmn_structure, train_data_em, skip_validation=True)
+
+    input_data = np.array([0]+[np.nan]*(self.num_vars+1))
+    for i in range(1,self.problem_depth+1):
         print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
