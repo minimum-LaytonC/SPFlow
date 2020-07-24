@@ -750,9 +750,9 @@ class S_RSPMN:
                         print(f"\n\th=1 for {max_val_SID}\n")
                         h = 1
                         new_spmn_sl_data = train_data[max_val_SID_indices, last_step_with_SID_idx[max_val_SID_indices]]
-                        print("new_spmn_sl_data.shape::\t"+str(new_spmn_sl_data.shape))
+                        print("new_spmn_sl_data.shape:\t"+str(new_spmn_sl_data.shape))
                         new_spmn_sl_data = np.concatenate((new_spmn_sl_data,np.ones((new_spmn_sl_data.shape[0],1))), axis=1)
-                        print("new_spmn_sl_data.shape::\t"+str(new_spmn_sl_data.shape))
+                        print("new_spmn_sl_data.shape:\t"+str(new_spmn_sl_data.shape))
                         break
                     else:
                         h -= 1
@@ -1025,6 +1025,48 @@ def get_action(branch, SID, dec_indices, num_vars=17):
 
 
 
+def best_next_decision(rspmn, input_data, depth=1, in_place=False):
+    root = rspmn.spmn.spmn_structure
+    if in_place:
+        data = input_data
+    else:
+        data = np.copy(input_data)
+    nodes = get_nodes_by_type(root)
+    dec_dict = {}
+    # find all possible decision values
+    for node in nodes:
+        if type(node) == Max:
+            if node.dec_idx in dec_dict:
+                dec_dict[node.dec_idx].union(set(node.dec_values))
+            else:
+                dec_dict[node.dec_idx] = set(node.dec_values)
+    next_dec_idx = None
+    # find next undefined decision
+    for idx in dec_dict.keys():
+        if np.all(np.isnan(data[:,idx])):
+            next_dec_idx = idx
+            break
+    assert next_dec_idx != None, "please assign all values of next decision to np.nan"
+    # determine best decisions based on meu
+    dec_vals = list(dec_dict[next_dec_idx])
+    best_decisions = np.full((1,data.shape[0]),dec_vals[0])
+    data[:,next_dec_idx] = best_decisions
+    if depth == 1:
+        meu_best = meu(root, data)
+    else:
+        meu_best = np.array([rmeu(rspmn, data[0], depth)])
+    for i in range(1, len(dec_vals)):
+        decisions_i = np.full((1,data.shape[0]), dec_vals[i])
+        data[:,next_dec_idx] = decisions_i
+        if depth == 1:
+            meu_i = meu(root, data)
+        else:
+            meu_i = np.array([rmeu(rspmn, data[0], depth)])
+        best_decisions = np.select([np.greater(meu_i, meu_best),True],[decisions_i, best_decisions])
+        data[:,next_dec_idx] = best_decisions
+        meu_best = np.maximum(meu_i,meu_best)
+    return best_decisions
+
 
 
 
@@ -1098,7 +1140,7 @@ if __name__ == "__main__":
     hour = str(datetime.time((datetime.now())))[:2]
 
     import pickle
-    pkle_path = f"data/{args.dataset}/{args.samples}x{args.problem_depth}/t:{args.mi_threshold}_h{args.horizon}"
+    pkle_path = f"data/{args.dataset}/{args.samples}x{args.problem_depth}/t:{args.mi_threshold}_h:{args.horizon}"
     if not path.exists(pkle_path):
         try:
             os.makedirs(pkle_path)
@@ -1108,26 +1150,26 @@ if __name__ == "__main__":
             pickle.dump(rspmn, file)
             file.close()
             data_SIDs = train_data[:,:,0].reshape(args.samples,args.problem_depth)
-            np.savetxt(f"data/{args.dataset}/{date}_{hour}_data_SIDs.tsv", data_SIDs, delimiter='\t')
+            np.savetxt(f"data/{args.dataset}/data_SIDs_{date}_{hour}.tsv", data_SIDs, delimiter='\t')
     if path.exists(pkle_path):
         file = open(f"{pkle_path}/rspmn_{date}_{hour}.pkle",'wb')
         pickle.dump(rspmn, file)
         file.close()
         data_SIDs = train_data[:,:,0].reshape(args.samples,args.problem_depth)
-        np.savetxt(f"{pkle_path}/data_SIDs.tsv", data_SIDs, delimiter='\t')
+        np.savetxt(f"{pkle_path}/data_SIDs_{date}_{hour}.tsv", data_SIDs, delimiter='\t')
 
-    input_data = np.array([0]+[np.nan]*(self.num_vars+1))
-    for i in range(1,self.problem_depth+1):
+    input_data = np.array([0]+[np.nan]*(args.num_vars+1))
+    for i in range(1,args.problem_depth+1):
         print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
 
     print("\napplying EM\n")
-    clear_caches(self)
+    clear_caches(rspmn)
     train_data_unrolled = train_data.reshape((-1,train_data.shape[2]))
     nans_em = np.empty((train_data_unrolled.shape[0],1))
     nans_em[:] = np.nan
     train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
-    EM_optimization(self.spmn.spmn_structure, train_data_em, skip_validation=True)
+    EM_optimization(rspmn.spmn.spmn_structure, train_data_em, skip_validation=True)
 
-    input_data = np.array([0]+[np.nan]*(self.num_vars+1))
-    for i in range(1,self.problem_depth+1):
+    input_data = np.array([0]+[np.nan]*(args.num_vars+1))
+    for i in range(1,rspmn.problem_depth+1):
         print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
