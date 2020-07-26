@@ -287,6 +287,7 @@ class S_RSPMN:
         self.partialOrder = partialOrder
         self.dec_indices = [i for i in range(len(scopeVars)) if scopeVars[i] in decNode]
         self.util_indices = [i for i in range(len(scopeVars)) if scopeVars[i] in utilNode]
+        self.dec_idx_unique_vals = dict()
         self.bug_flag = False
 
     def get_horizon_train_data(self, data, horizon):
@@ -481,7 +482,18 @@ class S_RSPMN:
         #train_data[:,t,0] = new_s1s
         return train_data
 
-
+    def get_all_decision_paths(self):
+        paths = []
+        for idx in self.dec_indices:
+            idx_paths = []
+            for val in self.dec_idx_unique_vals[idx]:
+                if len(paths) < 0:
+                    for path in paths:
+                        idx_paths.append(path+[val])
+                else:
+                    idx_paths.append([val])
+            paths = idx_paths
+        return paths
 
     def matches_state_branch(self, branch, train_data, SID_indices,
             last_step_with_SID_idx):
@@ -489,53 +501,71 @@ class S_RSPMN:
         branch_SIDs_in_data = np.isin(train_data[:,:,0].astype(int),branch_SIDs)
         branch_sequence_indices = np.any(branch_SIDs_in_data, axis=1)
         branch_step_indices = np.argmax(branch_SIDs_in_data, axis=1)
-        for i in range(0,self.horizon):
-            # select only sequences with sufficient remaining depth
-            branch_sequence_indices_i = np.logical_and(
-                    branch_sequence_indices,
-                    (branch_step_indices+i)<self.problem_depth
-                )
-            SID_indices_i = np.logical_and(
-                    SID_indices,
-                    (last_step_with_SID_idx+i)<self.problem_depth
-                )
-            branch_data = train_data[
-                    branch_sequence_indices_i,
-                    branch_step_indices[branch_sequence_indices_i]+i
-                ]
-            try:
+        dec_paths = self.get_all_decision_paths()
+        print("dec_paths:\t"+str(dec_paths))
+        for path in dec_paths:
+            matches_dec_path = np.ones(train_data.shape[:-1])
+            for i in range(len(self.dec_indices)):
+                idx = self.dec_indices[i]
+                val = path[i]
+                matches_dec_path = np.logical_and(matches_dec_path, train_data[:,:,idx]==val)
+                # print("matches_dec_path.shape:\t"+str(matches_dec_path.shape)+"\tnum_samples:\t"+str(np.sum(matches_dec_path)))
+            for i in range(0,self.horizon):
+                # select only sequences with sufficient remaining depth
+                branch_sequence_indices_i = np.logical_and(
+                        branch_sequence_indices,
+                        (branch_step_indices+i)<self.problem_depth
+                    )
+                SID_indices_i = np.logical_and(
+                        SID_indices,
+                        (last_step_with_SID_idx+i)<self.problem_depth
+                    )
+                # only select those which match the decision path
+                # print("np.sum(branch_sequence_indices_i):\t"+str(np.sum(branch_sequence_indices_i)))
+                branch_sequence_indices_i[branch_sequence_indices_i==True] = matches_dec_path[
+                        branch_sequence_indices_i,
+                        branch_step_indices[branch_sequence_indices_i]+i
+                    ]
+                # print("np.sum(branch_sequence_indices_i):\t"+str(np.sum(branch_sequence_indices_i)))
+                # print("np.sum(SID_indices_i):\t"+str(np.sum(SID_indices_i)))
+                SID_indices_i[SID_indices_i==True] = matches_dec_path[
+                        SID_indices_i,
+                        last_step_with_SID_idx[SID_indices_i]+i
+                    ]
+                # print("np.sum(SID_indices_i):\t"+str(np.sum(SID_indices_i)))
+                branch_data = train_data[
+                        branch_sequence_indices_i,
+                        branch_step_indices[branch_sequence_indices_i]+i
+                    ]
                 newSID_data = train_data[
                         SID_indices_i,
                         last_step_with_SID_idx[SID_indices_i]+i
                     ]
-            except:
-                print("SID_indices_i.dtype:\t"+str(SID_indices_i.dtype))
-                print("last_step_with_SID_idx.dtype:\t"+str(last_step_with_SID_idx.dtype))
-                print("i:\t"+str(i))
-                print("SID_indices.shape"+str(SID_indices.shape))
-                print("SID_indices_i:\t"+str(SID_indices_i))
-            # use SIDs of initial step
-            SIDs = np.append(
-                        train_data[
-                                SID_indices_i,
-                                last_step_with_SID_idx[SID_indices_i]
-                            ][:,0],
-                        train_data[
-                                branch_sequence_indices_i,
-                                branch_step_indices[branch_sequence_indices_i]
-                            ][:,0]
-                    )
-            mi_data = np.append(newSID_data,branch_data,axis=0)
-            if mi_data.shape[0] == 0: continue
-            mi_data = np.delete(mi_data,[0]+self.dec_indices,axis=1) # remove decision and SID values
-            # look for correlations between SID and data
-            max_mi = np.max(mutual_info_classif(
-                    mi_data,
-                    SIDs
-                ))
-            if max_mi > self.mi_threshold:
-                print(f"match failed; max_mi:\t{max_mi}")
-                return False
+                print("newSID_data:\n"+str(newSID_data[:10])+"\n")
+                print("np.unique(newSID_data[:,0]):\t"+str(np.unique(newSID_data[:,0])))
+                print("np.unique(newSID_data[:,self.dec_indices[0]]):\t"+str(np.unique(newSID_data[:,self.dec_indices[0]])))
+                # use SIDs of initial step
+                SIDs = np.append(
+                            train_data[
+                                    SID_indices_i,
+                                    last_step_with_SID_idx[SID_indices_i]
+                                ][:,0],
+                            train_data[
+                                    branch_sequence_indices_i,
+                                    branch_step_indices[branch_sequence_indices_i]
+                                ][:,0]
+                        )
+                mi_data = np.append(newSID_data,branch_data,axis=0)
+                if mi_data.shape[0] == 0: continue
+                mi_data = np.delete(mi_data,[0]+self.dec_indices,axis=1) # remove decision and SID values
+                # look for correlations between SID and data
+                max_mi = np.max(mutual_info_classif(
+                        mi_data,
+                        SIDs
+                    ))
+                if max_mi > self.mi_threshold:
+                    print(f"match failed; max_mi:\t{max_mi}")
+                    return False
         print("match found!")
         return True
 
@@ -557,6 +587,11 @@ class S_RSPMN:
         nans[:] = np.nan
         train_data = np.concatenate((nans,data),axis=2)
         train_data[:,0,0]=0
+
+        for idx in self.dec_indices:
+            self.dec_idx_unique_vals[idx] = np.unique(train_data[:,:,idx])
+            print(f"\ndecision idx:\t{idx}")
+            print("self.dec_idx_unique_vals[idx]:\t"+str(self.dec_idx_unique_vals[idx]))
         # merge sequence steps based on horizon
         train_data_h = self.get_horizon_train_data(data, 2)
         # s1 for step 1 is 0
@@ -1113,21 +1148,21 @@ if __name__ == "__main__":
         file = open(f"{pkle_path}/rspmn_{date}_{hour}.pkle",'wb')
         pickle.dump(rspmn, file)
         file.close()
-        data_SIDs = train_data[:,:,0].reshape(args.samples,args.problem_depth)
+        data_SIDs = train_data[:,:,0].reshape(rspmn.samples,rspmn.problem_depth)
         np.savetxt(f"{pkle_path}/data_SIDs.tsv", data_SIDs, delimiter='\t')
 
-    input_data = np.array([0]+[np.nan]*(self.num_vars+1))
-    for i in range(1,self.problem_depth+1):
+    input_data = np.array([0]+[np.nan]*(args.num_vars+1))
+    for i in range(1,rspmn.problem_depth+1):
         print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
 
     print("\napplying EM\n")
-    clear_caches(self)
+    clear_caches(rspmn)
     train_data_unrolled = train_data.reshape((-1,train_data.shape[2]))
     nans_em = np.empty((train_data_unrolled.shape[0],1))
     nans_em[:] = np.nan
     train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
-    EM_optimization(self.spmn.spmn_structure, train_data_em, skip_validation=True)
+    EM_optimization(rspmn.spmn.spmn_structure, train_data_em, skip_validation=True)
 
-    input_data = np.array([0]+[np.nan]*(self.num_vars+1))
-    for i in range(1,self.problem_depth+1):
+    input_data = np.array([0]+[np.nan]*(rspmn.num_vars+1))
+    for i in range(1,rspmn.problem_depth+1):
         print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
