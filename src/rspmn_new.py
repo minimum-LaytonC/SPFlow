@@ -856,7 +856,7 @@ class S_RSPMN:
 
 
 
-def get_branch_and_decisions_to_s2(rspmn_root):
+def get_branch_to_decisions_to_s2(rspmn_root):
     branch_and_decisions_to_s2 = dict()
     for branch in rspmn_root.children:
         queue = branch.children[1:]
@@ -898,10 +898,13 @@ def rmeu(rspmn, input_data, depth, debug=False):
     assert not np.isnan(input_data[0]), "starting SID (input_data[0]) must be defined."
     root = rspmn.spmn.spmn_structure
     branch = rspmn.SID_to_branch[input_data[0]]
+    branch_s2s = rspmn.s1_to_s2s[branch.children[0]]
+    if depth > 1 and len(branch_s2s[0].interface_links) == 0:
+        return None # unlinked branches cannot be evaluated beyond depth 1
     branch = assign_ids(branch)
     # set up caches
     if not hasattr(rspmn,"branch_to_decisions_to_s2s"):
-        branch_to_decisions_to_s2s = get_branch_and_decisions_to_s2(root)
+        branch_to_decisions_to_s2s = get_branch_to_decisions_to_s2(root)
         setattr(rspmn,"branch_to_decisions_to_s2s",branch_to_decisions_to_s2s)
     if not hasattr(rspmn,"branch_and_decisions_to_meu"):
         branch_and_decisions_to_meu = dict()
@@ -917,13 +920,17 @@ def rmeu(rspmn, input_data, depth, debug=False):
     # if unconditioned meu for this state branch and depth has already been cached, just return the cached value
     if np.all(np.isnan(input_data[1:])):
         if (branch, depth) in rspmn.branch_and_depth_to_rmeu:
+            root = assign_ids(root)
             return rspmn.branch_and_depth_to_rmeu[(branch, depth)]
         elif depth == 1:
             max_EU = meu(branch, np.array([input_data])).reshape(-1)
             rspmn.branch_and_depth_to_rmeu[(branch, depth)] = max_EU
+            root = assign_ids(root)
             return max_EU
     elif depth == 1:
-        return meu(branch, np.array([input_data]))
+        max_EU =  meu(branch, np.array([input_data]))
+        root = assign_ids(root)
+        return max_EU
     for decision_path, s2s in rspmn.branch_to_decisions_to_s2s[branch].items():
         path_data = deepcopy(input_data)
         ############### for unconditioned inputs, we can use caches ############
