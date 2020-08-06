@@ -160,7 +160,7 @@ class SPMN:
                         min_chis[curr_information_set_scope[var_idx]] = min_chi2_pvalue
 
                 except:
-                    #print("Exception in clustering step, defaulting to independent distribution")
+                    print("Exception in clustering step, defaulting to independent distribution")
                     exception = True
                     curr_vars_data = remaining_vars_data[:,curr_var_indices]
                     curr_vars_scope = list(curr_information_set_scope)

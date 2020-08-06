@@ -18,6 +18,7 @@ from datetime import datetime
 import argparse
 from spn.io.Graphics import plot_spn
 from spn.algorithms.MEU import meu
+from spn.algorithms.splitting.RDC import get_split_cols_RDC_py
 
 class S_RSPMN:
     def __init__(self,
@@ -489,6 +490,9 @@ class S_RSPMN:
         branch_SIDs_in_data = np.isin(train_data[:,:,0].astype(int),branch_SIDs)
         branch_sequence_indices = np.any(branch_SIDs_in_data, axis=1)
         branch_step_indices = np.argmax(branch_SIDs_in_data, axis=1)
+        split_cols = get_split_cols_RDC_py()
+        #ds_context = Context(metatypes=TODO)
+        #ds_context.add_domains(TODO)
         for i in range(0,self.horizon):
             # select only sequences with sufficient remaining depth
             branch_sequence_indices_i = np.logical_and(
