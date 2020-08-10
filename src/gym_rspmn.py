@@ -84,44 +84,44 @@ rspmn = pickle.load(file)
 SID_to_branch = dict()
 input_data_to_SID = dict()
 if problem == "FrozenLake" or problem == "NChain":
-    all_trails_reward = 0
-    for i in range(trials):
-        total_reward = 0
-        _ = env.reset()
-        if display:
-            env.render()
-        done = False
-        t=0
-        while not done and t<steps:
-            if t == 0:
-                SID = 0
-                input_data = np.array([[SID]+[np.nan]*4])
-            action = best_next_decision(rspmn, input_data, depth=steps-t).reshape(1).astype(int)[0]
-            #action = env.action_space.sample()
-            state, reward, done, info = env.step(action)
-            total_reward += reward
-            input_data[0,1] = action
-            input_data[0,2] = observation
-            input_data[0,3] = reward
-            if not SID in SID_to_branch:
-                for branch in rspmn.spmn_structure.children:
-                    if branch.children[0].densities[SID] > 0:
-                        SID_to_branch[SID] = branch
-            if tuple(input_data[0,:4]) not in input_data_to_SID:
-                _ = assign_ids(SID_to_branch[SID])
-                input_data_to_SID[tuple(input_data[0,:4])] = mpe(SID_to_branch[SID], input_data).astype(int)[0,-1]
-                _ = assign_ids(rspmn.spmn_structure)
-            SID = input_data_to_SID[tuple(input_data[0,:4])]
+all_trails_reward = 0
+for i in range(trials):
+    total_reward = 0
+    _ = env.reset()
+    if display:
+        env.render()
+    done = False
+    t=0
+    while not done and t<steps:
+        if t == 0:
+            SID = 0
             input_data = np.array([[SID]+[np.nan]*4])
-            if display:
-                print("\t"+str([t,action,observation,reward,SID]))
-                env.render()
-            t+=1
-        #if display:
+        action = best_next_decision(rspmn, input_data, depth=steps-t).reshape(1).astype(int)[0]
+        #action = env.action_space.sample()
+        state, reward, done, info = env.step(action)
+        total_reward += reward
+        input_data[0,1] = action
+        input_data[0,2] = state
+        input_data[0,3] = reward
+        if not SID in rspmn.SID_to_branch:
+            for branch in rspmn.spmn_structure.children:
+                if branch.children[0].densities[SID] > 0:
+                    rspmn.SID_to_branch[SID] = branch
+        if tuple(input_data[0,:4]) not in input_data_to_SID:
+            _ = assign_ids(rspmn.SID_to_branch[SID])
+            input_data_to_SID[tuple(input_data[0,:4])] = mpe(rspmn.SID_to_branch[SID], input_data).astype(int)[0,-1]
+            _ = assign_ids(root)
+        SID = input_data_to_SID[tuple(input_data[0,:4])]
+        input_data = np.array([[SID]+[np.nan]*4])
+        if display:
+            print("\t"+str([t,action,observation,reward,SID]))
+            env.render()
+        t+=1
+    if display:
         print("\ntotal reward for trial " + str(i+1) + ":\t"+str(total_reward))
-        all_trails_reward += total_reward
-        if i>0 and i%100 == 0:
-            print("average_reward:\t" + str(all_trails_reward/i))
+    all_trails_reward += total_reward
+    if i>0 and i%100 == 0:
+        print("average_reward:\t" + str(all_trails_reward/i))
 else:
 num_actions = env.action_space.n
 state_vars = len(env.observation_space.spaces)

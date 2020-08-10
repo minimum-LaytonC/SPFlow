@@ -4,7 +4,7 @@ from spn.algorithms.EM import EM_optimization
 import metaData, readData
 from spn.structure.Base import Sum, Product, Max
 from spn.structure.leaves.spmnLeaves.SPMNLeaf import State
-from spn.structure.Base import assign_ids, rebuild_scopes_bottom_up, get_nodes_by_type
+from spn.structure.Base import assign_ids, rebuild_scopes_bottom_up, get_nodes_by_type, Context
 from spn.structure.StatisticalTypes import MetaType
 from spn.algorithms.splitting.RDC import get_split_cols_RDC_py
 from spn.algorithms.SPMNHelper import get_ds_context
@@ -18,7 +18,6 @@ from datetime import datetime
 import argparse
 from spn.io.Graphics import plot_spn
 from spn.algorithms.MEU import meu
-from spn.algorithms.splitting.RDC import get_split_cols_RDC_py
 
 class S_RSPMN:
     def __init__(self,
@@ -490,9 +489,7 @@ class S_RSPMN:
         branch_SIDs_in_data = np.isin(train_data[:,:,0].astype(int),branch_SIDs)
         branch_sequence_indices = np.any(branch_SIDs_in_data, axis=1)
         branch_step_indices = np.argmax(branch_SIDs_in_data, axis=1)
-        split_cols = get_split_cols_RDC_py()
-        #ds_context = Context(metatypes=TODO)
-        #ds_context.add_domains(TODO)
+        split_cols = get_split_cols_RDC_py(threshold=self.mi_threshold)
         for i in range(0,self.horizon):
             # select only sequences with sufficient remaining depth
             branch_sequence_indices_i = np.logical_and(
@@ -505,43 +502,55 @@ class S_RSPMN:
                 )
             branch_data = train_data[
                     branch_sequence_indices_i,
-                    branch_step_indices[branch_sequence_indices_i]+i
+                    branch_step_indices[branch_sequence_indices_i]
                 ]
-            try:
-                newSID_data = train_data[
+            newSID_data = train_data[
+                    SID_indices_i,
+                    last_step_with_SID_idx[SID_indices_i]
+                ]
+            for j in range(1,i+1):
+                branch_data_j = train_data[
+                        branch_sequence_indices_i,
+                        branch_step_indices[branch_sequence_indices_i]+j
+                    ][:,1:]
+                newSID_data_j = train_data[
                         SID_indices_i,
-                        last_step_with_SID_idx[SID_indices_i]+i
-                    ]
-            except:
-                print("SID_indices_i.dtype:\t"+str(SID_indices_i.dtype))
-                print("last_step_with_SID_idx.dtype:\t"+str(last_step_with_SID_idx.dtype))
-                print("i:\t"+str(i))
-                print("SID_indices.shape"+str(SID_indices.shape))
-                print("SID_indices_i:\t"+str(SID_indices_i))
-            # use SIDs of initial step
-            SIDs = np.append(
-                        train_data[
-                                SID_indices_i,
-                                last_step_with_SID_idx[SID_indices_i]
-                            ][:,0],
-                        train_data[
-                                branch_sequence_indices_i,
-                                branch_step_indices[branch_sequence_indices_i]
-                            ][:,0]
-                    )
-            mi_data = np.append(newSID_data,branch_data,axis=0)
-            if mi_data.shape[0] == 0: continue
-            mi_data = np.delete(mi_data,[0]+self.dec_indices,axis=1) # remove decision and SID values
-            # look for correlations between SID and data
-            max_mi = np.max(mutual_info_classif(
-                    mi_data,
-                    SIDs
-                ))
-            if max_mi > self.mi_threshold:
-                print(f"match failed; max_mi:\t{max_mi}")
-                return False
+                        last_step_with_SID_idx[SID_indices_i]+j
+                    ][:,1:]
+                branch_data = np.concatenate((branch_data, branch_data_j), axis=1)
+                newSID_data = np.concatenate((newSID_data, newSID_data_j), axis=1)
+            corr_test_data = np.append(newSID_data,branch_data,axis=0)
+            if corr_test_data.shape[0] == 0: continue
+            metatypes = self.meta_types + self.meta_types[1:]*i
+            ds_context = Context(meta_types=metatypes)
+            ds_context.add_domains(corr_test_data)
+            scope = [j for j in range(len(self.scope) + len(self.scope[1:])*i)]
+            print("scope:\t"+str(scope))
+            print("corr_test_data.shape:\t"+str(corr_test_data.shape))
+            rdc_slices = split_cols(corr_test_data, ds_context, scope)
+            for correlated_var_set_cluster, correlated_var_set_scope, weight in rdc_slices:
+                if (0 in correlated_var_set_scope) and (len(correlated_var_set_scope) > 1):
+                    return False
+            # TODO: check to see if SID (scope 0) is clustered with any other variables
+            #   if SID is only clustered with decision value then ignore
         print("match found!")
         return True
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1019,6 +1028,19 @@ def rmeu(rspmn, input_data, depth, debug=False):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 def clear_caches(rspmn):
     del rspmn.branch_to_decisions_to_s2s
     del rspmn.branch_and_decisions_to_meu
@@ -1077,6 +1099,20 @@ def best_next_decision(rspmn, input_data, depth=1, in_place=False):
         data[:,next_dec_idx] = best_decisions
         meu_best = np.maximum(meu_i,meu_best)
     return best_decisions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
