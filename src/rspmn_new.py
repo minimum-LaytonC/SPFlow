@@ -3,7 +3,7 @@ from spn.algorithms.SPMN import SPMN
 from spn.algorithms.EM import EM_optimization
 import metaData, readData
 from spn.structure.Base import Sum, Product, Max
-from spn.structure.leaves.spmnLeaves.SPMNLeaf import State
+from spn.structure.leaves.spmnLeaves.SPMNLeaf import State, Utility
 from spn.structure.Base import assign_ids, rebuild_scopes_bottom_up, get_nodes_by_type, Context
 from spn.structure.StatisticalTypes import MetaType
 from spn.algorithms.splitting.RDC import get_split_cols_RDC_py
@@ -907,25 +907,18 @@ def fill_branch_and_decisions_to_s2(branch_and_decisions_to_s2, queue, path):
 
 
 
+
+
 def rmeu(rspmn, input_data, depth, debug=False):
     assert not np.isnan(input_data[0]), "starting SID (input_data[0]) must be defined."
     root = rspmn.spmn.spmn_structure
     branch = rspmn.SID_to_branch[input_data[0]]
     branch_s2s = rspmn.s1_to_s2s[branch.children[0]]
+    work_branch = deepcopy(branch)
     if depth > 1 and len(branch_s2s[0].interface_links) == 0:
         return None # unlinked branches cannot be evaluated beyond depth 1
-    branch = assign_ids(branch)
+    work_branch = assign_ids(work_branch)
     # set up caches
-    if not hasattr(rspmn,"branch_to_decisions_to_s2s"):
-        branch_to_decisions_to_s2s = get_branch_to_decisions_to_s2(root)
-        setattr(rspmn,"branch_to_decisions_to_s2s",branch_to_decisions_to_s2s)
-    if not hasattr(rspmn,"branch_and_decisions_to_meu"):
-        branch_and_decisions_to_meu = dict()
-        setattr(rspmn,"branch_and_decisions_to_meu",branch_and_decisions_to_meu)
-    if not hasattr(rspmn,"branch_and_decisions_and_s2_to_likelihood"):
-        branch_and_decisions_and_s2_to_likelihood = dict()
-        setattr(rspmn,"branch_and_decisions_and_s2_to_likelihood",
-            branch_and_decisions_and_s2_to_likelihood)
     if not hasattr(rspmn,"branch_and_depth_to_rmeu"):
         branch_and_depth_to_rmeu = dict()
         setattr(rspmn,"branch_and_depth_to_rmeu",branch_and_depth_to_rmeu)
@@ -936,101 +929,42 @@ def rmeu(rspmn, input_data, depth, debug=False):
             root = assign_ids(root)
             return rspmn.branch_and_depth_to_rmeu[(branch, depth)]
         elif depth == 1:
-            max_EU = meu(branch, np.array([input_data])).reshape(-1)
+            max_EU = meu(work_branch, np.array([input_data])).reshape(-1)
             rspmn.branch_and_depth_to_rmeu[(branch, depth)] = max_EU
             root = assign_ids(root)
             return max_EU
     elif depth == 1:
-        max_EU =  meu(branch, np.array([input_data]))
+        max_EU = meu(work_branch, np.array([input_data]))
         root = assign_ids(root)
         return max_EU
-    for decision_path, s2s in rspmn.branch_to_decisions_to_s2s[branch].items():
-        path_data = deepcopy(input_data)
-        ############### for unconditioned inputs, we can use caches ############
-        if np.all(np.isnan(path_data[1:])):
-            for i in range(len(decision_path)):
-                path_data[rspmn.dec_indices[i]] = decision_path[i]
-            if (branch,decision_path) in rspmn.branch_and_decisions_to_meu:
-                path_EU = rspmn.branch_and_decisions_to_meu[(branch,decision_path)]
-            else:
-                branch = assign_ids(branch)
-                path_EU = meu(branch, np.array([path_data])).reshape(-1)
-                rspmn.branch_and_decisions_to_meu[(branch,decision_path)] = path_EU
-            future_EU = 0
-            s2_norm = 0
-            for s2 in s2s:
-                SID = np.argmax(s2.densities).astype(int)
-                path_data[rspmn.s2_scope_idx] = SID
-                if (branch,decision_path,s2) in rspmn.branch_and_decisions_and_s2_to_likelihood:
-                    s2_likelihood = rspmn.branch_and_decisions_and_s2_to_likelihood[(branch,decision_path,s2)]
+    SID_to_util = dict()
+    for s2 in branch_s2s:
+        SID = np.argmax(s2.densities).astype(int)
+        next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
+        s2_value = rmeu(rspmn, next_data, depth-1)
+        print(f"SID: {SID},  depth: {depth}-1,  s2_value: {s2_value}")
+        SID_to_util[SID] = Utility(
+                [s2_value,s2_value+1],
+                [1],
+                [s2_value],
+                scope=rspmn.s2_scope_idx
+            )
+    q = work_branch.children[1:]
+    while len(q) > 0:
+        node = q.pop(0)
+        if isinstance(node, Max) or isinstance(node, Sum) or isinstance(node, Product):
+            for i in range(len(node.children)):
+                if isinstance(node.children[i], State):
+                    SID = np.argmax(node.children[i].densities).astype(int)
+                    print(f"SID: {SID},  depth: {depth}-1,  s2_value: {s2_value}")
+                    node.children[i] = SID_to_util[SID]
                 else:
-                    s2_likelihood = likelihood(branch,np.array([path_data])).reshape(-1)
-                    rspmn.branch_and_decisions_and_s2_to_likelihood[(branch,decision_path,s2)] = s2_likelihood
-            #     next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
-            #     future_val = rmeu(rspmn, next_data, depth-1)
-            #     future_EU += future_val * s2_likelihood
-            #     s2_norm += s2_likelihood
-            # future_EU /= s2_norm
-            # total_path_EU = path_EU + future_EU
-            # if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
-                ##### < problem area? #####
-                if SID in rspmn.SID_to_branch:
-                    next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
-                    future_val = rmeu(rspmn, next_data, depth-1)
-                    if not (future_val is None):
-                        future_EU += future_val * s2_likelihood
-                        s2_norm += s2_likelihood
-                    elif debug:
-                        print(f"\n\tsploot. depth:\t{depth}:\tSID:\t{SID}")
-                elif debug:
-                    print(f"\n\tsplat. depth:\t{depth}:\tSID:\t{SID}")
-            if s2_norm != 0:
-                future_EU /= s2_norm
-                total_path_EU = path_EU + future_EU
-                if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
-            ##### problem area? /> #####
-        ############## for conditioned inputs, we canNOT use caches ############
-        else:
-            skip=False
-            for i in range(len(decision_path)):
-                if (not np.isnan(input_data[rspmn.dec_indices[i]])) and \
-                    not (input_data[rspmn.dec_indices[i]] == decision_path[i]):
-                    skip = True # only consider paths that match the input
-                path_data[rspmn.dec_indices[i]] = decision_path[i]
-            if skip: continue
-            branch = assign_ids(branch)
-            path_EU = meu(branch, np.array([path_data])).reshape(-1)
-            future_EU = 0
-            s2_norm = 0
-            for s2 in s2s:
-                SID = np.argmax(s2.densities).astype(int)
-                path_data[rspmn.s2_scope_idx] = SID
-                s2_likelihood = likelihood(branch,np.array([path_data])).reshape(-1)
-                next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
-                if SID in rspmn.SID_to_branch:
-                    future_val = rmeu(rspmn, next_data, depth-1)
-                    if not (future_val is None):
-                        future_EU += future_val * s2_likelihood
-                        s2_norm += s2_likelihood
-                    elif debug:
-                        print(f"\n\tsploot. depth:\t{depth}:\tSID:\t{SID}")
-                elif debug:
-                    print(f"\n\tsplat. depth:\t{depth}:\tSID:\t{SID}")
-            if s2_norm != 0:
-                future_EU = future_EU / s2_norm
-                total_path_EU = path_EU + future_EU
-                if not max_EU or total_path_EU > max_EU: max_EU = total_path_EU
-    root = assign_ids(root)
+                    q.append(node.children[i])
+    work_branch = assign_ids(work_branch)
+    max_EU = meu(work_branch, np.array([input_data]))
     if np.all(np.isnan(input_data[1:])):
         rspmn.branch_and_depth_to_rmeu[(branch, depth)] = max_EU
     return max_EU
-
-
-
-
-
-
-
 
 
 
