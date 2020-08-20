@@ -3,13 +3,13 @@ import numpy as np
 from numpy.random import randint
 from copy import deepcopy
 import argparse
-from spn.algorithms.MEU import rmeu, best_next_decision
+#from spn.algorithms.MEU import rmeu, best_next_decision
 from spn.algorithms.SPMN import SPMN
 from spn.algorithms.MPE import mpe
 from spn.structure.Base import assign_ids
 
 trials = 1000
-steps = 10
+steps = 100
 
 slip = True
 noisy = False
@@ -83,6 +83,7 @@ rspmn = pickle.load(file)
 
 SID_to_branch = dict()
 input_data_to_SID = dict()
+input_and_depth_to_action = dict()
 if problem == "FrozenLake" or problem == "NChain":
 all_trails_reward = 0
 for i in range(trials):
@@ -96,7 +97,11 @@ for i in range(trials):
         if t == 0:
             SID = 0
             input_data = np.array([[SID]+[np.nan]*4])
-        action = best_next_decision(rspmn, input_data, depth=steps-t).reshape(1).astype(int)[0]
+        if tuple(input_data[0]) in input_and_depth_to_action:
+            action = input_and_depth_to_action[tuple(input_data[0])]
+        else:
+            action = best_next_decision(rspmn, input_data, depth=steps-t).reshape(1).astype(int)[0]
+            input_and_depth_to_action[tuple(input_data[0])] = action
         #action = env.action_space.sample()
         state, reward, done, info = env.step(action)
         total_reward += reward
@@ -113,12 +118,12 @@ for i in range(trials):
             _ = assign_ids(root)
         SID = input_data_to_SID[tuple(input_data[0,:4])]
         input_data = np.array([[SID]+[np.nan]*4])
-        if display:
-            print("\t"+str([t,action,observation,reward,SID]))
-            env.render()
+        # if display:
+            # print("\t"+str([t,action,state,reward,SID]))
+            # env.render()
         t+=1
     if display:
-        print("\ntotal reward for trial " + str(i+1) + ":\t"+str(total_reward))
+        print("\ntotal reward for trial " + str(i+1) + ":\t"+str(total_reward)+"\n\n")
     all_trails_reward += total_reward
     if i>0 and i%100 == 0:
         print("average_reward:\t" + str(all_trails_reward/i))
@@ -161,11 +166,11 @@ for i in range(trials):
         _ = assign_ids(SID_to_branch[SID])
         #mpe(SID_to_branch[SID], np.array([input_data])).astype(int)[0,state_vars+num_actions+2]
         _ = assign_ids(rspmn.spmn_structure)
-        if tuple(input_data[:state_vars+num_actions+3]) not in input_data_to_SID:
+        if tuple(input_data[:state_vars+num_actions+1]) not in input_data_to_SID:
             _ = assign_ids(SID_to_branch[SID])
-            input_data_to_SID[tuple(input_data[:state_vars+num_actions+2])] = mpe(SID_to_branch[SID], np.array([input_data])).astype(int)[0,state_vars+num_actions+2]
+            input_data_to_SID[tuple(input_data[:state_vars+num_actions+1])] = mpe(SID_to_branch[SID], np.array([input_data])).astype(int)[0,state_vars+num_actions+1]
             _ = assign_ids(rspmn.spmn_structure)
-        SID = input_data_to_SID[tuple(input_data[:state_vars+num_actions+2])]
+        SID = input_data_to_SID[tuple(input_data[:state_vars+num_actions+1])]
         total_reward += reward
         if display:
             #print("\t"+str([t,state,action,reward,SID]))

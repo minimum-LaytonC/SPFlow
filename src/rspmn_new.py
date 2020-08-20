@@ -942,7 +942,7 @@ def rmeu(rspmn, input_data, depth, debug=False):
         SID = np.argmax(s2.densities).astype(int)
         next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
         s2_value = rmeu(rspmn, next_data, depth-1)
-        print(f"SID: {SID},  depth: {depth}-1,  s2_value: {s2_value}")
+        # print(f"SID: {SID},  depth: {depth}-1,  s2_value: {s2_value}")
         SID_to_util[SID] = Utility(
                 [s2_value,s2_value+1],
                 [1],
@@ -956,7 +956,7 @@ def rmeu(rspmn, input_data, depth, debug=False):
             for i in range(len(node.children)):
                 if isinstance(node.children[i], State):
                     SID = np.argmax(node.children[i].densities).astype(int)
-                    print(f"SID: {SID},  depth: {depth}-1,  s2_value: {s2_value}")
+                    # print(f"SID: {SID},  depth: {depth}-1,  s2_value: {s2_value}")
                     node.children[i] = SID_to_util[SID]
                 else:
                     q.append(node.children[i])
@@ -976,9 +976,6 @@ def rmeu(rspmn, input_data, depth, debug=False):
 
 
 def clear_caches(rspmn):
-    del rspmn.branch_to_decisions_to_s2s
-    del rspmn.branch_and_decisions_to_meu
-    del rspmn.branch_and_decisions_and_s2_to_likelihood
     del rspmn.branch_and_depth_to_rmeu
 
 
@@ -1143,14 +1140,21 @@ if __name__ == "__main__":
     for i in range(1,args.problem_depth+1):
         print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
 
+    print(f"rmeu for depth 100:\t"+str(rmeu(rspmn, input_data, depth=100)))
+
     print("\napplying EM\n")
     clear_caches(rspmn)
     train_data_unrolled = train_data.reshape((-1,train_data.shape[2]))
     nans_em = np.empty((train_data_unrolled.shape[0],1))
     nans_em[:] = np.nan
     train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
-    EM_optimization(rspmn.spmn.spmn_structure, train_data_em, skip_validation=True)
+    i = 1
+    while i * 10000 <= train_data_em.shape[0]:
+        EM_optimization(rspmn.spmn.spmn_structure, train_data_em[((i-1)*10000):(i*10000)], skip_validation=True, iterations=1)
+        i+=1
 
     input_data = np.array([0]+[np.nan]*(args.num_vars+1))
     for i in range(1,rspmn.problem_depth+1):
         print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
+
+    print(f"rmeu for depth 100:\t"+str(rmeu(rspmn, input_data, depth=100)))
