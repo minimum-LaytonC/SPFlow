@@ -193,8 +193,8 @@ class S_RSPMN:
             utilNode=['reward']
             #scopeVars=['s1']+obs+decNode+['reward']
             #partialOrder = [['s1'],obs]+[[x] for x in decNode]+[['reward']]
-            scopeVars=['s1']+obs+decNode+['reward']
-            partialOrder = [['s1']]+[obs]+[[x] for x in decNode]+[['reward']]
+            scopeVars=['s1']+decNode+obs+['reward']
+            partialOrder = [['s1']]+[[x] for x in decNode]+[obs]+[['reward']]
             scope = [i for i in range(len(scopeVars))]
         elif dataset == "crossing_traffic_gym":
             decNode=['decision']
@@ -220,8 +220,8 @@ class S_RSPMN:
             utilNode=['reward']
             #scopeVars=['s1']+obs+decNode+['reward']
             #partialOrder = [['s1'],obs]+[[x] for x in decNode]+[['reward']]
-            scopeVars=['s1']+obs+decNode+['reward']
-            partialOrder = [['s1']]+[obs]+[[x] for x in decNode]+[['reward']]
+            scopeVars=['s1']+decNode+obs+['reward']
+            partialOrder = [['s1']]+[[x] for x in decNode]+[obs]+[['reward']]
             scope = [i for i in range(len(scopeVars))]
         elif dataset == "crossing_traffic_mdp":
             decNode=[
