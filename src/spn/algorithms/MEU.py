@@ -18,6 +18,7 @@ def meu_sum(node, meu_per_node, data=None, lls_per_node=None, rand_gen=None):
     meu_children = meu_per_node[:,[child.id for child in node.children]]
     likelihood_children = lls_per_node[:,[child.id for child in node.children]]
     weighted_likelihood = np.array(node.weights)*likelihood_children
+    weighted_likelihood[weighted_likelihood < 1/(10**10)] = 0
     norm = np.sum(weighted_likelihood, axis=1)
     if norm > 1/(10**10):
         normalized_weighted_likelihood = weighted_likelihood / norm.reshape(-1,1)

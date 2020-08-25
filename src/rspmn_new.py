@@ -73,10 +73,10 @@ class S_RSPMN:
             utilNode=['reward']
             scopeVars=['s1','action','observation','reward']
         elif dataset == "nchain":
-            partialOrder = [['s1'],['observation'],['action'],['reward']]
+            partialOrder = [['s1'],['action'],['observation'],['reward']]
             decNode=['action']
             utilNode=['reward']
-            scopeVars=['s1','observation','action','reward']
+            scopeVars=['s1','action','observation','reward']
         elif dataset == "elevators":
             decNode=[#'decision']
                     'close-door',
@@ -1096,7 +1096,7 @@ if __name__ == "__main__":
     df = pd.read_csv(
         f"data/{args.dataset}/{args.dataset}_{args.samples}x{args.problem_depth}.tsv",
         index_col=0, sep='\t',
-        header=0 if args.dataset=="repeated_marbles" or args.dataset=="tiger"  or args.dataset=="frozen_lake" else None)
+        header=0 if args.dataset=="repeated_marbles" or args.dataset=="tiger"  or args.dataset=="frozen_lake" or args.dataset=="nchain" else None)
     data = df.values.reshape(args.samples,args.problem_depth,args.num_vars)
 
     if args.dataset == "crossing_traffic":
@@ -1149,8 +1149,8 @@ if __name__ == "__main__":
     nans_em[:] = np.nan
     train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
     i = 1
-    while i * 10000 <= train_data_em.shape[0]:
-        EM_optimization(rspmn.spmn.spmn_structure, train_data_em[((i-1)*10000):(i*10000)], skip_validation=True, iterations=1)
+    while i * 100000 <= train_data_em.shape[0]:
+        EM_optimization(rspmn.spmn.spmn_structure, train_data_em[((i-1)*100000):(i*100000)], skip_validation=True, iterations=1)
         i+=1
 
     input_data = np.array([0]+[np.nan]*(args.num_vars+1))
@@ -1158,3 +1158,8 @@ if __name__ == "__main__":
         print(f"rmeu for depth {i}:\t"+str(rmeu(rspmn, input_data, depth=i)))
 
     print(f"rmeu for depth 100:\t"+str(rmeu(rspmn, input_data, depth=100)))
+
+    if path.exists(pkle_path):
+        file = open(f"{pkle_path}/rspmn_EM_{date}_{hour}.pkle",'wb')
+        pickle.dump(rspmn, file)
+        file.close()
