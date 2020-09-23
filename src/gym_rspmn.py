@@ -7,8 +7,9 @@ import argparse
 from spn.algorithms.SPMN import SPMN
 from spn.algorithms.MPE import mpe
 from spn.structure.Base import assign_ids
+from rspmn_new import *
 
-trials = 1000
+trials = 10000
 steps = 100
 
 slip = True
@@ -16,14 +17,14 @@ noisy = False
 
 display = False
 
-problem = "crossing_traffic"
+problem = "NChain"
 
 if problem == "FrozenLake":
     env = gym.make("FrozenLake-v0",is_slippery=slip)
     file = open('data/frozen_lake/rspmn_407.pkle','rb')
 elif problem == "NChain":
     env = gym.make("NChain-v0")
-    file = open('data/nchain/rspmn_428.pkle','rb')
+    file = open('data/nchain/100000x10/t:0.3_h:2/rspmn_0824_13.pkle','rb')
 elif problem == "crossing_traffic":
     env = gym.make("CrossingTraffic-v0")
     file = open('data/crossing_traffic/rspmn_531.pkle','rb')
@@ -35,7 +36,7 @@ elif problem == "skill_teaching":
 
 import gym
 env = gym.make("CrossingTraffic-v0")
-trials = 100000
+trials = 1000
 avg_rwd = 0
 # action_counts={0:0,1:0,2:0,3:0,4:0}
 for i in range(trials):
@@ -80,12 +81,15 @@ print(f"avg_rwd: {avg_rwd}")
 
 import pickle
 rspmn = pickle.load(file)
+root = rspmn.spmn.spmn_structure
 
 SID_to_branch = dict()
 input_data_to_SID = dict()
+SID_and_depth_to_action = dict()
 input_and_depth_to_action = dict()
 if problem == "FrozenLake" or problem == "NChain":
-all_trails_reward = 0
+all_trials_reward = 0
+avg_rwds = []
 for i in range(trials):
     total_reward = 0
     _ = env.reset()
@@ -97,11 +101,13 @@ for i in range(trials):
         if t == 0:
             SID = 0
             input_data = np.array([[SID]+[np.nan]*4])
-        if tuple(input_data[0]) in input_and_depth_to_action:
-            action = input_and_depth_to_action[tuple(input_data[0])]
+        if input_data[0,0] in SID_and_depth_to_action:#input_and_depth_to_action:
+            #action = input_and_depth_to_action[tuple(input_data[0])]
+            action = SID_and_depth_to_action[input_data[0,0]]
         else:
             action = best_next_decision(rspmn, input_data, depth=steps-t).reshape(1).astype(int)[0]
-            input_and_depth_to_action[tuple(input_data[0])] = action
+            #input_and_depth_to_action[tuple(input_data[0])] = action
+            SID_and_depth_to_action[input_data[0,0]] = action
         #action = env.action_space.sample()
         state, reward, done, info = env.step(action)
         total_reward += reward
@@ -124,9 +130,12 @@ for i in range(trials):
         t+=1
     if display:
         print("\ntotal reward for trial " + str(i+1) + ":\t"+str(total_reward)+"\n\n")
-    all_trails_reward += total_reward
-    if i>0 and i%100 == 0:
-        print("average_reward:\t" + str(all_trails_reward/i))
+    all_trials_reward += total_reward
+    # if i>0 and (i+1)%100 == 0:
+    #     print(f"{i+1} average_reward:\t" + str(all_trails_reward/i))
+    if (i+1)%10000 == 0:
+        avg_rwds+=[all_trials_reward/10000]
+        all_trials_reward = 0
 else:
 num_actions = env.action_space.n
 state_vars = len(env.observation_space.spaces)
@@ -180,7 +189,7 @@ for i in range(trials):
     print("\ntotal reward for trial " + str(i+1) + ":\t"+str(total_reward))
     all_trails_reward += total_reward
     if i>0 and i%100 == 0:
-        print("average_reward:\t" + str(all_trails_reward/i))
+        print(f"{i} average_reward:\t" + str(all_trails_reward/i))
 
 
 average_reward = all_trails_reward / trials

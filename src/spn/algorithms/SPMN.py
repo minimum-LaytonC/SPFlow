@@ -150,19 +150,19 @@ class SPMN:
                     data_slices_prod = split_cols(remaining_vars_data, ds_context, remaining_vars_scope)
                     logging.debug(f'{len(data_slices_prod)} slices found at data_slices_prod: ')
 
-                    # from sklearn.feature_selection import chi2
-                    # min_chis = {}
-                    # for var_idx in curr_var_indices:
-                    #     min_chi2_pvalue = np.nanmin(chi2(
-                    #             np.abs(np.delete(remaining_vars_data,curr_var_indices,axis=1)),
-                    #             np.abs(remaining_vars_data[:,var_idx])
-                    #         )[1])
-                    #     min_chis[curr_information_set_scope[var_idx]] = min_chi2_pvalue
+                    from sklearn.feature_selection import chi2
+                    min_chis = {}
+                    for var_idx in curr_var_indices:
+                        min_chi2_pvalue = np.nanmin(chi2(
+                                np.abs(np.delete(remaining_vars_data,curr_var_indices,axis=1)),
+                                np.abs(remaining_vars_data[:,var_idx])
+                            )[1])
+                        min_chis[curr_information_set_scope[var_idx]] = min_chi2_pvalue
 
                 except Exception as e:
                     print("Exception in clustering step, defaulting to independent distribution")
-                    print("remaining_vars_data.shape:\t"+str(remaining_vars_data.shape))
-                    print("Exception:\n"+str(e)+"\n")
+                    #print("remaining_vars_data.shape:\t"+str(remaining_vars_data.shape))
+                    #print("Exception:\n"+str(e)+"\n")
                     exception = True
                     curr_vars_data = remaining_vars_data[:,curr_var_indices]
                     curr_vars_scope = list(curr_information_set_scope)
@@ -177,11 +177,11 @@ class SPMN:
 
                 for correlated_var_set_cluster, correlated_var_set_scope, weight in data_slices_prod:
                     min_chi = 1
-                    # if not exception:
-                    #     for var in correlated_var_set_scope:
-                    #         if var in min_chis and min_chis[var] < min_chi:
-                    #             min_chi = min_chis[var]
-                    if any(var_scope in correlated_var_set_scope for var_scope in rest_set_scope): #or (not exception and min_chi < chi2_threshold):
+                    if not exception:
+                        for var in correlated_var_set_scope:
+                            if var in min_chis and min_chis[var] < min_chi:
+                                min_chi = min_chis[var]
+                    if any(var_scope in correlated_var_set_scope for var_scope in rest_set_scope) or (not exception and min_chi < 0.15):
 
                         next_remaining_vars_scope.extend(correlated_var_set_scope)
 

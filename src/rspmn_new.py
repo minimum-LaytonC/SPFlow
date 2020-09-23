@@ -1,7 +1,6 @@
 import numpy as np
 from spn.algorithms.SPMN import SPMN
 from spn.algorithms.EM import EM_optimization
-import metaData, readData
 from spn.structure.Base import Sum, Product, Max
 from spn.structure.leaves.spmnLeaves.SPMNLeaf import State, Utility
 from spn.structure.Base import assign_ids, rebuild_scopes_bottom_up, get_nodes_by_type, Context
@@ -18,6 +17,7 @@ from datetime import datetime
 import argparse
 from spn.io.Graphics import plot_spn
 from spn.algorithms.MEU import meu
+from sklearn.preprocessing import normalize
 
 class S_RSPMN:
     def __init__(self,
@@ -51,7 +51,10 @@ class S_RSPMN:
         self.SID_to_s2 = dict()
         self.s1_to_s2s = dict()
 
-        self.meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*(num_vars-1)+[MetaType.UTILITY]
+        if dataset == "skill_teaching_rl":
+            self.meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*(num_vars-3)+[MetaType.REAL]+[MetaType.DISCRETE]+[MetaType.UTILITY]
+        else:
+            self.meta_types = [MetaType.STATE]+[MetaType.DISCRETE]*(num_vars-1)+[MetaType.UTILITY]
         self.scope = [i for i in range(len(self.meta_types))]
         self.s2_count = 0
         self.s2_scope_idx = len(self.scope)
@@ -68,68 +71,43 @@ class S_RSPMN:
             utilNode=['reward']
             scopeVars=['s1','observation','action','reward']
         elif dataset == "frozen_lake":
-            partialOrder = [['s1'],['action'],['observation','reward']]
+            partialOrder = [['s1'],['observation'],['action'],['reward']]
             decNode=['action']
             utilNode=['reward']
-            scopeVars=['s1','action','observation','reward']
+            scopeVars=['s1','observation','action','reward']
         elif dataset == "nchain":
             partialOrder = [['s1'],['action'],['observation'],['reward']]
             decNode=['action']
             utilNode=['reward']
             scopeVars=['s1','action','observation','reward']
         elif dataset == "elevators":
-            decNode=[#'decision']
-                    'close-door',
-                    'move-current-dir',
-                    'open-door-going-up',
-                    'open-door-going-down',
-                ]
+            decNode=['decision']
+                #     'close-door',
+                #     'move-current-dir',
+                #     'open-door-going-up',
+                #     'open-door-going-down',
+                # ]
             obs = [
-                    'elevator-at-floor-0',
-                    'elevator-at-floor-1',
-                    'elevator-at-floor-2',
+                    # 'elevator-at-floor-0',
+                    # 'elevator-at-floor-1',
+                    'elevator-floor',# 'elevator-at-floor-2',
                     'person-in-elevator-going-down',
                     'elevator-dir',
-                    'person-waiting-1',
-                    'person-waiting-2',
-                    'person-waiting-3',
+                    #'person-waiting-1',
+                    'person-waiting',#person-waiting-2',
+                    #'person-waiting-3',
                     'person-in-elevator-going-up',
                 ]
             utilNode=['reward']
-            scopeVars=['s1']+obs+decNode+['reward']
-            partialOrder = [['s1']]+[obs]+[[x] for x in decNode]+[['reward']]
-        elif dataset == "elevators_mdp":
-            decNode=[
-                    'close-door',
-                    'move-current-dir',
-                    'open-door-going-up',
-                    'open-door-going-down',
-                ]
-            obs = [
-                    'elevator-closed[$e0]',
-                    'person-in-elevator-going-down[$e0]',
-                    'elevator-at-floor[$e0, $f0]',
-                    'elevator-at-floor[$e0, $f1]',
-                    'elevator-at-floor[$e0, $f2]',
-                    'person-waiting-up[$f0]',
-                    'person-waiting-up[$f1]',
-                    'person-waiting-up[$f2]',
-                    'elevator-dir-up[$e0]',
-                    'person-waiting-down[$f0]',
-                    'person-waiting-down[$f1]',
-                    'person-waiting-down[$f2]',
-                    'person-in-elevator-going-up[$e0]',
-                ]
-            utilNode=['reward']
-            scopeVars=['s1']+obs+decNode+['reward']
-            partialOrder = [['s1']]+[obs]+[[x] for x in decNode]+[['reward']]
+            scopeVars=['s1']+decNode+obs+['reward']
+            partialOrder = [['s1']]+[[x] for x in decNode]+[obs+['reward']]
         elif dataset == "skill_teaching":
-            decNode=[
-                    'giveHint-1',
-                    'giveHint-2',
-                    'askProb-1',
-                    'askProb-2',
-                ]
+            decNode=['decision']
+                #     'giveHint-1',
+                #     'giveHint-2',
+                #     'askProb-1',
+                #     'askProb-2',
+                # ]
             obs = [
                     'hintedRightObs-1',
                     'hintedRightObs-2',
@@ -143,32 +121,32 @@ class S_RSPMN:
             utilNode=['reward']
             #scopeVars=['s1']+obs+decNode+['reward']
             #partialOrder = [['s1'],obs]+[[x] for x in decNode]+[['reward']]
-            scopeVars=['s1']+obs+decNode+['reward']
-            partialOrder = [['s1']]+[obs]+[[x] for x in decNode]+[['reward']]
-        elif dataset == "skill_teaching_mdp":
-            decNode=[
-                    'giveHint-1',
-                    'giveHint-2',
-                    'askProb-1',
-                    'askProb-2',
-                ]
+            scopeVars=['s1']+decNode+obs+['reward']
+            partialOrder = [['s1']]+[[x] for x in decNode]+[obs+['reward']]
+        elif dataset == "skill_teaching_rl":
+            decNode=['action']
+                #     'giveHint-1',
+                #     'giveHint-2',
+                #     'askProb-1',
+                #     'askProb-2',
+                # ]
             obs = [
-                    'hintDelayVar[$s0]',
-                    'hintDelayVar[$s1]',
-                    'updateTurn[$s0]',
-                    'updateTurn[$s1]',
-                    'answeredRight[$s0]',
-                    'answeredRight[$s1]',
-                    'proficiencyMed[$s0]',
-                    'proficiencyMed[$s1]',
-                    'proficiencyHigh[$s0]',
-                    'proficiencyHigh[$s1]',
-                    'hintedRight[$s0]',
-                    'hintedRight[$s1]',
+                    'action-1',
+                    'hintedRightObs-1',
+                    'hintedRightObs-2',
+                    'answeredRightObs-1',
+                    'answeredRightObs-2',
+                    'updateTurnObs-1',
+                    'updateTurnObs-2',
+                    'hintDelayObs-1',
+                    'hintDelayObs-2',
+                    'reward-1'
                 ]
             utilNode=['reward']
-            scopeVars=['s1']+obs+decNode+['reward']
-            partialOrder = [['s1']]+[obs]+[[x] for x in decNode]+[['reward']]
+            #scopeVars=['s1']+obs+decNode+['reward']
+            #partialOrder = [['s1'],obs]+[[x] for x in decNode]+[['reward']]
+            scopeVars=['s1']+obs+decNode+utilNode
+            partialOrder = [['s1'],obs,decNode,utilNode]
         elif dataset == "crossing_traffic":
             decNode=['decision']
                 #     'move-east',
@@ -176,110 +154,32 @@ class S_RSPMN:
                 #     'move-south',
                 #     'move-west'
                 # ]
-            obs = [
-                    'arrival-max-xpos-1',
-                    'arrival-max-xpos-2',
-                    'arrival-max-xpos-3',
-                    'robot-at[$x1, $y1]',
-                    'robot-at[$x1, $y2]',
-                    'robot-at[$x1, $y3]',
-                    'robot-at[$x2, $y1]',
-                    'robot-at[$x2, $y2]',
-                    'robot-at[$x2, $y3]',
-                    'robot-at[$x3, $y1]',
-                    'robot-at[$x3, $y2]',
-                    'robot-at[$x3, $y3]',
-                ]
+            # obs = [
+            #         'arrival-max-xpos-1',
+            #         'arrival-max-xpos-2',
+            #         'arrival-max-xpos-3',
+            #         'robot-at[$x1, $y1]',
+            #         'robot-at[$x1, $y2]',
+            #         'robot-at[$x1, $y3]',
+            #         'robot-at[$x2, $y1]',
+            #         'robot-at[$x2, $y2]',
+            #         'robot-at[$x2, $y3]',
+            #         'robot-at[$x3, $y1]',
+            #         'robot-at[$x3, $y2]',
+            #         'robot-at[$x3, $y3]',
+            #     ]
             utilNode=['reward']
-            #scopeVars=['s1']+obs+decNode+['reward']
-            #partialOrder = [['s1'],obs]+[[x] for x in decNode]+[['reward']]
-            scopeVars=['s1']+decNode+obs+['reward']
-            partialOrder = [['s1']]+[[x] for x in decNode]+[obs]+[['reward']]
+            #scopeVars=['s1']+decNode+obs+['reward']
+            scopeVars = ['s1', 'robot_position', 'decision',  'arrival', 'reward']
+            #partialOrder = [['s1']]+[[x] for x in decNode]+[obs]+[['reward']]
+            partialOrder = [['s1'],['robot_position']]+[[x] for x in decNode]+[['arrival','reward']]
             scope = [i for i in range(len(scopeVars))]
-        elif dataset == "crossing_traffic_gym":
-            decNode=['decision']
-                #     'move-east',
-                #     'move-north',
-                #     'move-south',
-                #     'move-west'
-                # ]
-            obs = [
-                    'arrival-max-xpos-1',
-                    'arrival-max-xpos-2',
-                    'arrival-max-xpos-3',
-                    'robot-at[$x1, $y1]',
-                    'robot-at[$x1, $y2]',
-                    'robot-at[$x1, $y3]',
-                    'robot-at[$x2, $y1]',
-                    'robot-at[$x2, $y2]',
-                    'robot-at[$x2, $y3]',
-                    'robot-at[$x3, $y1]',
-                    'robot-at[$x3, $y2]',
-                    'robot-at[$x3, $y3]',
-                ]
+        elif dataset == "crossing_traffic_rl":
+            decNode=['action']
             utilNode=['reward']
-            #scopeVars=['s1']+obs+decNode+['reward']
-            #partialOrder = [['s1'],obs]+[[x] for x in decNode]+[['reward']]
-            scopeVars=['s1']+decNode+obs+['reward']
-            partialOrder = [['s1']]+[[x] for x in decNode]+[obs]+[['reward']]
+            scopeVars = ['s1', 'action-1', 'robot_position-1', 'arrive-1', 'reward-1', 'action', 'reward']
+            partialOrder = [['s1'],['action-1', 'robot_position-1', 'arrive-1', 'reward-1'],['action'],['reward']]
             scope = [i for i in range(len(scopeVars))]
-        elif dataset == "crossing_traffic_mdp":
-            decNode=[
-                    'move-east',
-                    'move-north',
-                    'move-south',
-                    'move-west'
-                ]
-            obs = [
-                    'robot-at[$x1, $y1]',
-                    'robot-at[$x1, $y2]',
-                    'robot-at[$x1, $y3]',
-                    'robot-at[$x2, $y1]',
-                    'robot-at[$x2, $y2]',
-                    'robot-at[$x2, $y3]',
-                    'robot-at[$x3, $y1]',
-                    'robot-at[$x3, $y2]',
-                    'robot-at[$x3, $y3]',
-                    'obstacle-at[$x1, $y1]',
-                    'obstacle-at[$x1, $y2]',
-                    'obstacle-at[$x1, $y3]',
-                    'obstacle-at[$x2, $y1]',
-                    'obstacle-at[$x2, $y2]',
-                    'obstacle-at[$x2, $y3]',
-                    'obstacle-at[$x3, $y1]',
-                    'obstacle-at[$x3, $y2]',
-                    'obstacle-at[$x3, $y3]',
-                ]
-            utilNode=['reward']
-            scopeVars=['s1']+obs+decNode+['reward']
-            partialOrder = [['s1']]+[obs]+[[x] for x in decNode]+[['reward']]
-        elif dataset == "game_of_life_mdp":
-            decNode=[
-                    'set[$x1, $y1]',
-                    'set[$x1, $y2]',
-                    'set[$x1, $y3]',
-                    'set[$x2, $y1]',
-                    'set[$x2, $y2]',
-                    'set[$x2, $y3]',
-                    'set[$x3, $y1]',
-                    'set[$x3, $y2]',
-                    'set[$x3, $y3]',
-                ]
-            obs = [
-                    'alive[$x1, $y1]',
-                    'alive[$x1, $y2]',
-                    'alive[$x1, $y3]',
-                    'alive[$x2, $y1]',
-                    'alive[$x2, $y2]',
-                    'alive[$x2, $y3]',
-                    'alive[$x3, $y1]',
-                    'alive[$x3, $y2]',
-                    'alive[$x3, $y3]',
-                ]
-            utilNode=['reward']
-            scopeVars=['s1']+obs+decNode+['reward']
-            partialOrder = [['s1']]+[obs]+[[x] for x in decNode]+[['reward']]
-
         self.decNode = decNode
         #self.obs=obs
         self.utilNode = utilNode
@@ -517,15 +417,15 @@ class S_RSPMN:
                         SID_indices_i,
                         last_step_with_SID_idx[SID_indices_i]+j
                     ][:,1:]
-                branch_data = np.concatenate((branch_data, branch_data_j), axis=1)
-                newSID_data = np.concatenate((newSID_data, newSID_data_j), axis=1)
+                branch_data = np.concatenate((branch_data[:,0].reshape(-1,1), branch_data_j), axis=1)
+                newSID_data = np.concatenate((newSID_data[:,0].reshape(-1,1), newSID_data_j), axis=1)
             corr_test_data = np.append(newSID_data,branch_data,axis=0)
             if corr_test_data.shape[0] == 0: continue
-            metatypes = self.meta_types + self.meta_types[1:]*i
+            metatypes = self.meta_types# + self.meta_types[1:]*i
             ds_context = Context(meta_types=metatypes)
             ds_context.add_domains(corr_test_data)
-            scope = [j for j in range(len(self.scope) + len(self.scope[1:])*i)]
-            print("scope:\t"+str(scope))
+            scope = self.scope#[j for j in range(len(self.scope) + len(self.scope[1:])*i)]
+            #print("scope:\t"+str(scope))
             print("corr_test_data.shape:\t"+str(corr_test_data.shape))
             rdc_slices = split_cols(corr_test_data, ds_context, scope)
             for correlated_var_set_cluster, correlated_var_set_scope, weight in rdc_slices:
@@ -570,13 +470,15 @@ class S_RSPMN:
         nans[:] = np.nan
         train_data = np.concatenate((nans,data),axis=2)
         train_data[:,0,0]=0
+        print("got train_data")
         # merge sequence steps based on horizon
-        train_data_h = self.get_horizon_train_data(data, 2)
+        train_data_h = self.get_horizon_train_data(data, self.horizon)
+        print("got train_data_h")
         # s1 for step 1 is 0
         train_data_h[:,0,0]=0
 
         partialOrder_h, decNode_h, utilNode_h, scopeVars_h, meta_types_h = self.get_horizon_params(
-                self.partialOrder, self.decNode, self.utilNode, self.scopeVars, self.meta_types, 2
+                self.partialOrder, self.decNode, self.utilNode, self.scopeVars, self.meta_types, self.horizon
             )
 
         start_time = time.perf_counter()
@@ -606,9 +508,11 @@ class S_RSPMN:
             spmn0_structure = pickle.load(file)
             file.close()
 
+        print("spmn0 meu:\t"+str(meu(spmn0_structure, np.array([[np.nan]*len(scopeVars_h)]))))
 
         if plot:
             from spn.io.Graphics import plot_spn
+            print("plotting spmn0")
             plot_spn(spmn0_structure, f"{self.plot_path}/spmn0.png", feature_labels=scopeVars_h)
 
         self.s2_count = 1
@@ -622,6 +526,7 @@ class S_RSPMN:
 
         if plot:
             from spn.io.Graphics import plot_spn
+            print("plotting spmn0 with s2 nodes")
             plot_spn(spmn0_structure,f"{self.plot_path}/spmn0_with_s2.png", feature_labels=self.scopeVars+["s2"])
 
         spmn_t = SPMN(
@@ -751,7 +656,7 @@ class S_RSPMN:
             start_time_learning_structure = time.perf_counter()
             if not matched:
                 ################ < creating new branch for state   #############
-                h = 2#self.horizon
+                h = self.horizon
                 tdh = self.get_horizon_train_data(data, h)
                 tdh[:,:,0] = train_data[:,:,0]
                 while True:
@@ -837,8 +742,10 @@ class S_RSPMN:
             total_time_learning_structures += time_learning_structure
         learn_s_rspmn_stoptime = time.perf_counter()
         learn_s_rspmn_runtime = learn_s_rspmn_stoptime - start_time
-        print(f"learn_s_rspmn runtime: {learn_s_rspmn_runtime}")
-        nodes = get_nodes_by_type(self.spmn.spmn_structure)
+        print(f"\n\nlearn_s_rspmn runtime: {learn_s_rspmn_runtime}\n\n")
+        self.learning_time = learn_s_rspmn_runtime
+        num_nodes = len(get_nodes_by_type(self.spmn.spmn_structure))
+        print(f"num nodes:\t {num_nodes}")
         if plot:
             from spn.io.Graphics import plot_spn
             plot_spn(self.spmn.spmn_structure, f"{self.plot_path}/s-rspmn.png", feature_labels=self.scopeVars+["s2"])
@@ -909,13 +816,21 @@ def fill_branch_and_decisions_to_s2(branch_and_decisions_to_s2, queue, path):
 
 
 
+
+
+
+
 def rmeu(rspmn, input_data, depth, debug=False):
     assert not np.isnan(input_data[0]), "starting SID (input_data[0]) must be defined."
     root = rspmn.spmn.spmn_structure
+    if not input_data[0] in rspmn.SID_to_branch:
+        print("SID_to_branch cache miss")
+        return 0
     branch = rspmn.SID_to_branch[input_data[0]]
     branch_s2s = rspmn.s1_to_s2s[branch.children[0]]
     work_branch = deepcopy(branch)
     if depth > 1 and len(branch_s2s[0].interface_links) == 0:
+        print("\nOOF\n")
         return None # unlinked branches cannot be evaluated beyond depth 1
     work_branch = assign_ids(work_branch)
     # set up caches
@@ -934,7 +849,7 @@ def rmeu(rspmn, input_data, depth, debug=False):
             root = assign_ids(root)
             return max_EU
     elif depth == 1:
-        max_EU = meu(work_branch, np.array([input_data]))
+        max_EU = meu(work_branch, np.array([input_data])).reshape(-1)
         root = assign_ids(root)
         return max_EU
     SID_to_util = dict()
@@ -942,13 +857,17 @@ def rmeu(rspmn, input_data, depth, debug=False):
         SID = np.argmax(s2.densities).astype(int)
         next_data = np.array([SID]+[np.nan]*(rspmn.num_vars+1))
         s2_value = rmeu(rspmn, next_data, depth-1)
-        # print(f"SID: {SID},  depth: {depth}-1,  s2_value: {s2_value}")
-        SID_to_util[SID] = Utility(
-                [s2_value,s2_value+1],
-                [1],
-                [s2_value],
-                scope=rspmn.s2_scope_idx
-            )
+        # b = rspmn.SID_to_branch[SID]
+        # bnum = rspmn.spmn.spmn_structure.children.index(b)
+        # print(f"Branch: {bnum},  depth: {depth-1},  s2_value: {s2_value}")
+        if s2_value is None: SID_to_util[SID] = None
+        else:
+            SID_to_util[SID] = Utility(
+                    [s2_value,s2_value+1],
+                    [1],
+                    [s2_value],
+                    scope=rspmn.s2_scope_idx
+                )
     q = work_branch.children[1:]
     while len(q) > 0:
         node = q.pop(0)
@@ -960,6 +879,14 @@ def rmeu(rspmn, input_data, depth, debug=False):
                     node.children[i] = SID_to_util[SID]
                 else:
                     q.append(node.children[i])
+            for i in range(len(node.children)):
+                if node.children[i] is None:
+                    print("missing child")
+                    _ = node.children.pop(i)
+                    if isinstance(node, Sum):
+                        _ = node.weights.pop(i)
+                        node.weights = normalize(node.weights, norm="l1")
+    work_branch = remove_unlinked(work_branch)
     work_branch = assign_ids(work_branch)
     max_EU = meu(work_branch, np.array([input_data]))
     if np.all(np.isnan(input_data[1:])):
@@ -970,8 +897,35 @@ def rmeu(rspmn, input_data, depth, debug=False):
 
 
 
+def remove_unlinked(branch):
+    q = branch.children[1:]
+    while len(q) > 0:
+        node = q.pop(0)
+        if isinstance(node, Max) or isinstance(node, Product):
+            for i in range(len(node.children)):
+                q.append(node.children[i])
+        elif isinstance(node, Sum):
+            to_remove = []
+            for i in range(len(node.children)):
+                if terminal_sum_child(node.children[i]):
+                    print("removing child")
+                    to_remove = [i]+to_remove
+                else:
+                    q.append(node.children[i])
+            for i in to_remove:
+                _ = node.children.pop(i)
+                _ = node.weights.pop(i)
+    return branch
 
-
+def terminal_sum_child(child):
+    q = [child]
+    while len(q) > 0:
+        node = q.pop(0)
+        if node is None: return True
+        if isinstance(node, Max) or isinstance(node, Product):
+            for i in range(len(node.children)):
+                q.append(node.children[i])
+        elif isinstance(node,Sum): return False
 
 
 
@@ -1033,9 +987,46 @@ def best_next_decision(rspmn, input_data, depth=1, in_place=False):
 
 
 
+def hard_em(rspmn, train_data):
+    train_data_unrolled = train_data.reshape((-1,train_data.shape[2]))
+    nans_em = np.empty((train_data_unrolled.shape[0],1))
+    nans_em[:] = np.nan
+    train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
+    print(f"{len(rspmn.spmn.spmn_structure.children)} children")
+    for i in range(len(rspmn.spmn.spmn_structure.children)):
+        print(f"child {i}")
+        branch = rspmn.spmn.spmn_structure.children[i]
+        _ = assign_ids(branch)
+        branch_SIDs = rspmn.branch_to_SIDs[branch]
+        branch_em_data = train_data_em[np.isin(train_data_em[:,0], branch_SIDs)]
+        next_SIDs = mpe(branch, branch_em_data)[:,rspmn.s2_scope_idx]
+        unique, counts = np.unique(next_SIDs, return_counts=True)
+        next_SID_counts = dict(zip(unique, counts))
+        q = branch.children[1:]
+        update_weights_hard_em(q, next_SID_counts)
 
 
-
+def update_weights_hard_em(q, next_SID_counts):
+    sums = []
+    count = 0
+    while(len(q) > 0):
+        node = q.pop(0)
+        if isinstance(node, Max) or isinstance(node, Product):
+            for i in range(len(node.children)):
+                q.append(node.children[i])
+        elif isinstance(node, Sum):
+            sums += [node]
+        elif isinstance(node, State):
+            count += next_SID_counts[np.argmax(node.densities)]
+    for sum_node in sums:
+        sum_counts = []
+        for i in range(len(sum_node.children)):
+            sum_counts += [update_weights_hard_em([sum_node.children[i]], next_SID_counts)]
+        sum_sum_counts = sum(sum_counts)
+        for i in range(len(sum_node.children)):
+            sum_node.weights[i] = sum_counts[i]/sum_sum_counts
+        count += sum_sum_counts
+    return count
 
 
 
@@ -1079,6 +1070,14 @@ if __name__ == "__main__":
             print ("Creation of the directory %s failed" % plot_path)
             sys.exit()
 
+    num_vars = args.num_vars
+    if args.dataset == "crossing_traffic":
+        num_vars = 4
+    elif args.dataset == "elevators":
+        num_vars = 7
+    elif args.dataset == "skill_teaching":
+        num_vars = 10
+
     rspmn = S_RSPMN(
                 dataset = args.dataset,
                 debug = args.debug==2,
@@ -1089,29 +1088,69 @@ if __name__ == "__main__":
                 horizon = args.horizon,
                 problem_depth = args.problem_depth,
                 samples = args.samples,
-                num_vars = 14 if args.dataset == "crossing_traffic" else args.num_vars,
+                num_vars = num_vars,
                 plot_path = plot_path
             )
-
+    if "rl" in args.dataset:
+        datapath = f"data/{args.dataset}/{args.dataset}_{args.samples}x{args.problem_depth}x{1}.tsv"
+    else:
+        datapath = f"data/{args.dataset}/{args.dataset}_{args.samples}x{args.problem_depth}.tsv"
     df = pd.read_csv(
-        f"data/{args.dataset}/{args.dataset}_{args.samples}x{args.problem_depth}.tsv",
+        datapath,
         index_col=0, sep='\t',
-        header=0 if args.dataset=="repeated_marbles" or args.dataset=="tiger"  or args.dataset=="frozen_lake" or args.dataset=="nchain" else None)
+        header=0 if args.dataset=="repeated_marbles" or args.dataset=="tiger"  or args.dataset=="frozen_lake" or args.dataset=="nchain" or "rl" in args.dataset else None)
     data = df.values.reshape(args.samples,args.problem_depth,args.num_vars)
+    data = np.around(data, decimals=2)
 
     if args.dataset == "crossing_traffic":
-        decisions = data[:,:,12:16]
+        decisions = data[:,:,:4]
+        decisions = np.concatenate((np.zeros((decisions.shape[0],decisions.shape[1],1)),decisions),axis=2)
+        decisions = np.argmax(decisions,axis=2)
+        robot_position = np.argmax(data[:,:,7:-1],axis=2)
+        arrival = data[:,:,5].reshape(data.shape[0],-1,1)
+        reward = data[:,:,-1]
+        data = np.concatenate(
+                (
+                    robot_position.reshape(data.shape[0],-1,1),
+                    decisions.reshape(data.shape[0],-1,1),
+                    arrival.reshape(data.shape[0],-1,1),
+                    reward.reshape(data.shape[0],-1,1),
+                ),
+                axis=2
+            )
+    elif args.dataset == "elevators":
+        decisions = data[:,:,:4]
+        decisions = np.concatenate((np.zeros((decisions.shape[0],decisions.shape[1],1)),decisions),axis=2)
+        decisions = np.argmax(decisions,axis=2)
+        elevator_floor = np.argmax(data[:,:,4:7],axis=2)
+        person_waiting = data[:,:,11]
+        elevator_dir = data[:,:,7]
+        person_in_elevator_down = data[:,:,8]
+        person_in_elevator_up = data[:,:,-2]
+        reward = data[:,:,-1]
+        data = np.concatenate(
+                (
+                    decisions.reshape(data.shape[0],-1,1),
+                    elevator_floor.reshape(data.shape[0],-1,1),
+                    person_in_elevator_down.reshape(data.shape[0],-1,1),
+                    elevator_dir.reshape(data.shape[0],-1,1),
+                    person_waiting.reshape(data.shape[0],-1,1),
+                    person_in_elevator_up.reshape(data.shape[0],-1,1),
+                    reward.reshape(data.shape[0],-1,1),
+                ),
+                axis=2
+            )
+    elif args.dataset == "skill_teaching":
+        decisions = data[:,:,:4]
         decisions = np.concatenate((np.zeros((decisions.shape[0],decisions.shape[1],1)),decisions),axis=2)
         decisions = np.argmax(decisions,axis=2)
         data = np.concatenate(
                 (
-                    data[:,:,:12],
                     decisions.reshape(data.shape[0],-1,1),
-                    data[:,:,-1].reshape(data.shape[0],-1,1)
+                    data[:,:,4:]
                 ),
                 axis=2
             )
-
     train_data = rspmn.learn_s_rspmn(data, plot = args.plot)
 
     date = str(datetime.date(datetime.now()))[-5:].replace('-','')
@@ -1144,14 +1183,16 @@ if __name__ == "__main__":
 
     print("\napplying EM\n")
     clear_caches(rspmn)
-    train_data_unrolled = train_data.reshape((-1,train_data.shape[2]))
-    nans_em = np.empty((train_data_unrolled.shape[0],1))
-    nans_em[:] = np.nan
-    train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
-    i = 1
-    while i * 100000 <= train_data_em.shape[0]:
-        EM_optimization(rspmn.spmn.spmn_structure, train_data_em[((i-1)*100000):(i*100000)], skip_validation=True, iterations=1)
-        i+=1
+    rspmn = hard_em(rspmn, train_data)
+    # train_data_unrolled = train_data.reshape((-1,train_data.shape[2]))
+    # nans_em = np.empty((train_data_unrolled.shape[0],1))
+    # nans_em[:] = np.nan
+    # train_data_em = np.concatenate((train_data_unrolled,nans_em),axis=1)
+    # for i in range(len(rspmn.spmn.spmn_structure.children)):
+    #     _ = assign_ids(rspmn.spmn.spmn_structure.children[i])
+    #     branch_SIDs = rspmn.branch_to_SIDs[rspmn.spmn.spmn_structure.children[i]]
+    #     branch_em_data = train_data_em[np.isin(train_data_em[:,0], branch_SIDs)]
+    #     EM_optimization(rspmn.spmn.spmn_structure.children[i], branch_em_data, skip_validation=True, iterations=1)
 
     input_data = np.array([0]+[np.nan]*(args.num_vars+1))
     for i in range(1,rspmn.problem_depth+1):
