@@ -71,10 +71,10 @@ class S_RSPMN:
             utilNode=['reward']
             scopeVars=['s1','observation','action','reward']
         elif dataset == "frozen_lake":
-            partialOrder = [['s1'],['observation'],['action'],['reward']]
+            partialOrder = [['s1'],['action'],['observation','reward']]
             decNode=['action']
             utilNode=['reward']
-            scopeVars=['s1','observation','action','reward']
+            scopeVars=['s1','action','observation','reward']
         elif dataset == "nchain":
             partialOrder = [['s1'],['action'],['observation'],['reward']]
             decNode=['action']

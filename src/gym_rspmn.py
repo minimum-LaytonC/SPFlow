@@ -9,7 +9,7 @@ from spn.algorithms.MPE import mpe
 from spn.structure.Base import assign_ids
 from rspmn_new import *
 
-trials = 10000
+trials = 50000
 steps = 100
 
 slip = True
@@ -87,7 +87,6 @@ SID_to_branch = dict()
 input_data_to_SID = dict()
 SID_and_depth_to_action = dict()
 input_and_depth_to_action = dict()
-if problem == "FrozenLake" or problem == "NChain":
 all_trials_reward = 0
 avg_rwds = []
 for i in range(trials):
